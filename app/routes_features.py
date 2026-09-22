@@ -16,17 +16,26 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from app.adapters.mcp import McpError
-from app.core.ids import now_ts
+from app.core.ids import new_id, now_ts
 from app.db import Database
 
 router = APIRouter(prefix="/api", tags=["features"])
 
 _state = None
+
+# 上传目录与允许的图片类型
+UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
+ALLOWED_IMAGE_TYPES = {
+    "image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp",
+}
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024        # 单文件 10MB
 
 
 def bind(state) -> None:
@@ -38,6 +47,57 @@ def _db() -> Database:
     if _state is None or _state.db is None:
         raise HTTPException(503, "服务未就绪")
     return _state.db
+
+
+# ─────────────────────────────────────────────────────────────
+# 图片上传
+# ─────────────────────────────────────────────────────────────
+#
+# 为什么不用 base64 直接塞进 messages.attachments_json：
+#   一张 2MB 的图 base64 后约 2.7MB，会进 SQLite、进每次查询、进备份。
+#   落盘 + 存 URL 更合理，也是原项目的做法（data/uploads/）。
+
+
+@router.post("/upload")
+async def upload(file: UploadFile = File(...)) -> dict:
+    content_type = (file.content_type or "").lower()
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(400, f"只接受图片（{', '.join(sorted(ALLOWED_IMAGE_TYPES))}），"
+                                 f"收到 {content_type or '未知类型'}")
+
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(400, "文件为空")
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"文件超过 {MAX_UPLOAD_BYTES // 1024 // 1024}MB")
+
+    suffix = mimetypes.guess_extension(content_type) or ".bin"
+    if suffix == ".jpe":
+        suffix = ".jpg"
+    name = f"{new_id('img')}{suffix}"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    (UPLOAD_DIR / name).write_bytes(payload)
+
+    return {
+        "url": f"/uploads/{name}",
+        "name": file.filename or name,
+        "bytes": len(payload),
+        "type": content_type,
+    }
+
+
+@router.get("/uploads")
+async def list_uploads(limit: int = Query(50, ge=1, le=300)) -> dict:
+    """列出已上传的图片（按修改时间倒序）。"""
+    if not UPLOAD_DIR.is_dir():
+        return {"uploads": [], "count": 0}
+    files = sorted(UPLOAD_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+    items = [
+        {"url": f"/uploads/{p.name}", "name": p.name, "bytes": p.stat().st_size,
+         "mtime": p.stat().st_mtime}
+        for p in files[:limit] if p.is_file()
+    ]
+    return {"uploads": items, "count": len(items)}
 
 
 # ─────────────────────────────────────────────────────────────

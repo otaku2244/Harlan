@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harlan</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ─────────── 侧边栏：固定导航 ─────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark" id="brandMark">H</span>
+      <span class="brand-name" id="brandName">Harlan</span>
+      <span class="conn-dot" id="connDot" title="连接状态"></span>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item" data-section="chat">对话</button>
+      <button class="nav-item" data-section="memory">记忆</button>
+      <button class="nav-item" data-section="diary">日记</button>
+      <button class="nav-item" data-section="moments">朋友圈</button>
+      <button class="nav-item" data-section="schedule">日程</button>
+      <button class="nav-item" data-section="settings">设置</button>
+    </nav>
+
+    <!-- 对话区的会话列表（只在对话区显示） -->
+    <div class="conv-pane" id="convPane">
+      <div class="conv-head">
+        <span>会话</span>
+        <button class="ghost-btn" id="newConvBtn" title="新建对话">＋</button>
+      </div>
+      <div class="conv-list" id="convList"></div>
+    </div>
+  </aside>
+
+  <!-- ─────────── 主内容区 ─────────── -->
+  <main class="main">
+
+    <!-- 对话 -->
+    <section class="section" id="sec-chat" hidden>
+      <header class="sec-head">
+        <h1 id="chatTitle">对话</h1>
+        <div class="sec-actions">
+          <span class="hint" id="chatHint"></span>
+        </div>
+      </header>
+
+      <div class="msg-scroll" id="msgScroll">
+        <div class="msg-list" id="msgList"></div>
+        <div class="empty" id="chatEmpty" hidden>
+          <p>还没有消息。</p>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="composer-tools">
+          <button class="ghost-btn" id="attachBtn" title="添加图片">＋</button>
+          <input type="file" id="fileInput" accept="image/*" multiple hidden>
+          <span class="attach-preview" id="attachPreview"></span>
+          <span class="spacer"></span>
+          <button class="ghost-btn" id="stopBtn" hidden>停止</button>
+        </div>
+        <div class="composer-row">
+          <textarea id="input" rows="1" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+          <button class="send-btn" id="sendBtn" disabled>发送</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 记忆 -->
+    <section class="section" id="sec-memory" hidden>
+      <header class="sec-head">
+        <h1>记忆</h1>
+        <div class="sec-actions">
+          <div class="tabs" data-tabs="memory">
+            <button class="tab" data-tab="recalls">召回记录</button>
+            <button class="tab" data-tab="wakes">唤醒状态</button>
+          </div>
+        </div>
+      </header>
+      <div class="sec-body" id="memoryBody"></div>
+    </section>
+
+    <!-- 日记 -->
+    <section class="section" id="sec-diary" hidden>
+      <header class="sec-head">
+        <h1>日记</h1>
+        <div class="sec-actions"><span class="hint" id="diaryHint"></span></div>
+      </header>
+      <div class="sec-body split" id="diaryBody">
+        <div class="pane-list" id="diaryList"></div>
+        <article class="pane-detail" id="diaryDetail">
+          <p class="placeholder">从左边选一篇。</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- 朋友圈 -->
+    <section class="section" id="sec-moments" hidden>
+      <header class="sec-head">
+        <h1>朋友圈</h1>
+        <div class="sec-actions">
+          <button class="ghost-btn" id="newMomentBtn">发一条</button>
+        </div>
+      </header>
+      <div class="sec-body narrow">
+        <div class="moment-editor" id="momentEditor" hidden>
+          <textarea id="momentInput" rows="3" placeholder="这一刻想说点什么…"></textarea>
+          <div class="editor-actions">
+            <button class="ghost-btn" id="momentCancel">取消</button>
+            <button class="primary-btn" id="momentSubmit">发布</button>
+          </div>
+        </div>
+        <div id="momentList"></div>
+      </div>
+    </section>
+
+    <!-- 日程 -->
+    <section class="section" id="sec-schedule" hidden>
+      <header class="sec-head">
+        <h1>日程</h1>
+        <div class="sec-actions">
+          <button class="ghost-btn" id="newScheduleBtn">新建</button>
+        </div>
+      </header>
+      <div class="sec-body narrow">
+        <div class="sched-editor" id="schedEditor" hidden>
+          <div class="field-row">
+            <label>类型</label>
+            <select id="schedType">
+              <option value="reminder">提醒</option>
+              <option value="alarm">闹铃</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label>时间</label>
+            <input type="datetime-local" id="schedWhen">
+          </div>
+          <div class="field-row">
+            <label>内容</label>
+            <input type="text" id="schedContent" placeholder="要提醒什么">
+          </div>
+          <div class="editor-actions">
+            <button class="ghost-btn" id="schedCancel">取消</button>
+            <button class="primary-btn" id="schedSubmit">保存</button>
+          </div>
+        </div>
+        <div id="schedList"></div>
+      </div>
+    </section>
+
+    <!-- 设置 -->
+    <section class="section" id="sec-settings" hidden>
+      <header class="sec-head">
+        <h1>设置</h1>
+        <div class="sec-actions">
+          <button class="ghost-btn" id="diagBtn">运行诊断</button>
+        </div>
+      </header>
+      <div class="sec-body narrow" id="settingsBody"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- 轻量提示条 -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
