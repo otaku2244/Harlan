@@ -1,0 +1,10 @@
+{
+  "source": "https://github.com/death34018-hue/AionsHome/tree/main/public",
+  "synced": 74,
+  "skipped": {
+    "已砍功能的素材目录": 33,
+    "超过体积上限": 25
+  },
+  "max_kb": 500,
+  "note": "小文件全量同步；大文件与已砍功能的素材目录被排除"
+}

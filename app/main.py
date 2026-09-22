@@ -20,7 +20,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -293,6 +293,56 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
 
 
 # ─────────────────────────────────────────────────────────────
+# 前端诊断：把浏览器里的报错收回来
+# ─────────────────────────────────────────────────────────────
+#
+# 为什么需要这个：前端初始化外面包了 .catch(e => console.warn(...))，
+# 出错只写进 Console 的警告里，界面上完全看不出来（表现为"点了没反应"）。
+# 而服务端**验证不了 JS 运行时** —— 我只能测资源是否 200。
+#
+# 所以让页面把 window.onerror / unhandledrejection 回传到这里，
+# 我用 GET /api/debug/frontend-errors 就能读到，不必再让用户截图。
+
+_frontend_errors: list[dict] = []
+_FRONTEND_ERROR_LIMIT = 50
+
+
+class FrontendError(BaseModel):
+    message: str = ""
+    source: str = ""
+    lineno: int = 0
+    colno: int = 0
+    stack: str = ""
+    kind: str = "error"          # error | unhandledrejection | log
+    url: str = ""
+
+
+@app.post("/api/debug/frontend-error")
+async def report_frontend_error(body: FrontendError) -> dict:
+    _frontend_errors.append({
+        "at": now_ts(), **body.model_dump(),
+    })
+    del _frontend_errors[:-_FRONTEND_ERROR_LIMIT]
+    print(f"[frontend:{body.kind}] {body.message} @ {body.source}:{body.lineno}", flush=True)
+    return {"ok": True}
+
+
+@app.get("/api/debug/frontend-errors")
+async def get_frontend_errors(clear: bool = False) -> dict:
+    items = list(_frontend_errors)
+    if clear:
+        _frontend_errors.clear()
+    return {"count": len(items), "errors": items}
+
+
+@app.delete("/api/debug/frontend-errors")
+async def clear_frontend_errors() -> dict:
+    count = len(_frontend_errors)
+    _frontend_errors.clear()
+    return {"cleared": count}
+
+
+# ─────────────────────────────────────────────────────────────
 # 唤醒（P3）
 # ─────────────────────────────────────────────────────────────
 
@@ -430,8 +480,18 @@ if STATIC_DIR.is_dir():
         return _page("manifest.json")
 
     @app.get("/sw.js")
-    async def service_worker() -> FileResponse:
-        return _page("sw.js")
+    async def service_worker() -> Response:
+        """Service Worker。
+
+        返回 204 让浏览器**跳过注册**，而不是报错。理由：
+          * 开发阶段 SW 会缓存旧页面，改完代码刷新看到的是旧的，非常迷惑
+          * 我们还没有离线需求，SW 现在只有副作用
+        以后要做 PWA 离线时，把文件放进来就会自动开始提供。
+        """
+        target = STATIC_DIR / "sw.js"
+        if target.exists() and target.stat().st_size > 0:
+            return FileResponse(str(target), media_type="application/javascript")
+        return Response(status_code=204)
 
     # 各功能页：/chat → chat.html，/settings → settings.html …
     PAGE_ROUTES = [
@@ -449,3 +509,60 @@ if STATIC_DIR.is_dir():
             return _route
 
         app.get(f"/{_name}", name=f"page_{_name.replace('-', '_')}")(_make(_file))
+
+    # 未移植的功能页：显式给出说明页，而不是让它 404 或白屏
+    #
+    # 主页网格是 AionsHome 原版的，注册了 33 个入口，我们只移植了 12 个。
+    # 不做处理的话，用户点其余 21 个会看到 "Not Found"，像坏了一样。
+    from fastapi.responses import HTMLResponse
+
+    NOT_MIGRATED = {
+        "chatroom": "聊天室（多角色群聊）",
+        "theater": "小剧场（角色扮演）",
+        "date-theater": "去约会",
+        "ghost-forest": "奥罗斯幽林（TRPG）",
+        "heart-whispers": "心语",
+        "wishes": "许愿池",
+        "wallet": "钱包",
+        "gift": "爱的印记",
+        "fund": "奥罗斯财团（基金）",
+        "reading": "陪伴阅读",
+        "english-corner": "学习角",
+        "music-station": "点歌台",
+        "album": "相册",
+        "taobao": "逛淘宝",
+        "xhs-lite": "小红书",
+        "lounge-friends": "好友串门",
+        "doudizhu": "斗地主",
+        "toys": "密语时刻",
+        "capabilities": "工具与能力",
+        "playground": "娱乐室",
+        "seeky": "Seeky",
+        "wallpaper": "动态壁纸",
+        "pet": "宠物",
+        "hug": "爱的抱抱",
+    }
+
+    @app.get("/{page_name}", include_in_schema=False)
+    async def not_migrated_page(page_name: str) -> HTMLResponse:
+        label = NOT_MIGRATED.get(page_name)
+        if label is None:
+            raise HTTPException(404, "Not Found")
+        return HTMLResponse(f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{label} — 未启用</title>
+<style>
+  body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:#241f1c;color:#f2e9e4;font-family:system-ui,-apple-system,"PingFang SC",sans-serif}}
+  .card{{max-width:420px;padding:32px 28px;text-align:center}}
+  h1{{font-size:20px;margin:0 0 12px}}
+  p{{color:#b9aaa0;line-height:1.7;margin:0 0 8px;font-size:14px}}
+  a{{display:inline-block;margin-top:20px;padding:10px 22px;border-radius:20px;
+     background:#ff8359;color:#241f1c;text-decoration:none;font-weight:600;font-size:14px}}
+</style></head><body><div class="card">
+  <h1>{label}</h1>
+  <p>这个功能在当前部署里<strong>没有启用</strong>。</p>
+  <p>它依赖 Windows 本机能力、或属于暂未移植的娱乐模块。</p>
+  <a href="/">← 回到主页</a>
+</div></body></html>""")

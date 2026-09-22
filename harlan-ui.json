@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "说明": "Harlan 前端可见性配置。改这个文件后刷新页面生效，不需要动 JS/CSS。",
+    "用法": "把某个键的值改成 false 就隐藏，改回 true 就显示。",
+    "生成": "由 scripts/apply-frontend-config.py 读取，生成 app/static/harlan-ui-config.js"
+  },
+
+  "sidebar": {
+    "_说明": "聊天页左侧抽屉里的按钮，按 onclick 内容匹配",
+    "+ 新对话": true,
+    "openSubPage('/settings')": true,
+    "openSubPage('/diary')": true,
+    "openSubPage('/')": true,
+    "openWalletPanel()": false,
+    "openSubPage('/toys')": false,
+    "openStarredPanel()": false,
+    "openSystemLog()": false,
+    "openFileManager()": false
+  },
+
+  "apps": {
+    "_说明": "主页网格里的图标，键名对应 home.html 内联脚本里 APPS 的 id",
+    "chat": true,
+    "memory": true,
+    "diary": true,
+    "worldbook": true,
+    "settings": true,
+    "schedule": true,
+    "moments": true,
+
+    "chatroom": false,
+    "theater": false,
+    "dateTheater": false,
+    "ghost-forest": false,
+    "gift": false,
+    "fund": false,
+    "reading": false,
+    "english-corner": false,
+    "music-station": false,
+    "album": false,
+    "taobao": false,
+    "xhs-lite": false,
+    "lounge-friends": false,
+    "doudizhu": false,
+    "wishes": false,
+    "whisper": false,
+    "capabilities": false,
+    "playground": false,
+    "seeky": false,
+    "wallpaper": false,
+    "pet": false,
+    "hug": false
+  },
+
+  "plusMenu": {
+    "_说明": "聊天输入框旁 ＋ 展开的菜单项，按文案子串匹配",
+    "密语": false,
+    "礼物": false,
+    "钱包": false,
+    "转账": false,
+    "许愿": false,
+    "相册": false,
+    "音乐": false,
+    "点歌": false,
+    "视频通话": false,
+    "系统日志": false
+  }
+}
