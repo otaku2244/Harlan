@@ -126,6 +126,16 @@ async function init() {
     .catch(() => { chatroomConfig = {}; });
   loadProactiveCompanionshipStatus();
   [models, worldBook, conversations] = await bootstrap;
+  // 防御：/api/models 必须返回裸数组。若上游改成包了一层对象，这里兜一下，
+  // 避免 renderModelSelect 抛错导致整个 init() 中断 —— 中断后 currentConvId
+  // 为 null，send() 会静默 return，表现为"点发送没反应"，而且错误被
+  // .catch(e => console.warn(...)) 吞掉，界面上完全看不出来。
+  if (models && !Array.isArray(models) && Array.isArray(models.models)) {
+    console.warn('[chat] /api/models 返回了对象，已取 .models 兜底');
+    models = models.models;
+  }
+  if (!Array.isArray(models)) models = [];
+  if (!Array.isArray(conversations)) conversations = [];
   renderModelSelect();
   const initParams = new URLSearchParams(location.search);
   const targetConvId = initParams.get('conv');

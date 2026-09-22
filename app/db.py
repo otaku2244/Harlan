@@ -98,6 +98,40 @@ CREATE TABLE IF NOT EXISTS delivery_receipts (
     created_at    REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_receipts_window ON delivery_receipts(window_id, created_at);
+
+-- 记忆召回日志：记下"它每一轮想到了什么"
+-- 这张表本身不参与决策，纯粹是为了让前端能把"它在想什么"显示出来。
+-- 没有它的话，用户只能看到回复，看不到回复背后召回了哪些记忆。
+CREATE TABLE IF NOT EXISTS recall_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    conv_id     TEXT NOT NULL DEFAULT '',
+    window_id   TEXT NOT NULL DEFAULT '',
+    actor       TEXT NOT NULL DEFAULT '',      -- 哪个角色在说话
+    query       TEXT NOT NULL DEFAULT '',      -- 当时用的查询
+    ok          INTEGER NOT NULL DEFAULT 0,    -- 召回是否成功
+    count       INTEGER NOT NULL DEFAULT 0,    -- 召回几条
+    ids_json    TEXT NOT NULL DEFAULT '[]',    -- 召回的记忆 ID
+    context     TEXT NOT NULL DEFAULT '',      -- 注入的正文（前端可预览）
+    error       TEXT NOT NULL DEFAULT '',      -- 失败原因
+    source      TEXT NOT NULL DEFAULT 'chat',  -- chat | wake（区分用户触发还是主动开口）
+    created_at  REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recall_log_time ON recall_log(created_at DESC);
+
+-- 朋友圈：AI 与用户都能发，AI 会自动回复
+-- 注意与 Serein 的分工：Serein 管"记忆"，这里管"社交动态"。
+-- 两者都会产生文本，但用途不同，不要混。
+CREATE TABLE IF NOT EXISTS moments (
+    id            TEXT PRIMARY KEY,
+    author        TEXT NOT NULL,               -- actors.slug
+    content       TEXT NOT NULL DEFAULT '',
+    attachments_json TEXT NOT NULL DEFAULT '[]',
+    likes         INTEGER NOT NULL DEFAULT 0,
+    replies_json  TEXT NOT NULL DEFAULT '[]',  -- [{author, content, created_at}]
+    source        TEXT NOT NULL DEFAULT '',    -- 来自哪次触发（如 wake:idle）
+    created_at    REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_moments_time ON moments(created_at DESC);
 """
 
 
@@ -473,6 +507,141 @@ class Database:
             (receipt_id, window_id, json.dumps(list(delivered_ids), ensure_ascii=False), now_ts()),
         )
         return True
+
+    # ── 记忆召回日志 ────────────────────────────────
+
+    async def log_recall(
+        self, *, window_id: str, actor: str, query: str, ok: bool, ids: list[str],
+        context: str = "", error: str = "", source: str = "chat", conv_id: str = "",
+    ) -> None:
+        """记一次召回。失败也要记 —— "为什么它没提起那件事"往往要看失败原因。"""
+        await self.execute(
+            "INSERT INTO recall_log (conv_id, window_id, actor, query, ok, count, ids_json, "
+            "context, error, source, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                conv_id, window_id, actor, query, 1 if ok else 0, len(ids),
+                json.dumps(list(ids), ensure_ascii=False),
+                (context or "")[:4000], error or "", source or "chat", now_ts(),
+            ),
+        )
+
+    async def recall_log(self, limit: int = 50, conv_id: str | None = None,
+                         source: str | None = None) -> list[dict]:
+        sql = "SELECT * FROM recall_log"
+        clauses, params = [], []
+        if conv_id:
+            clauses.append("conv_id = ?")
+            params.append(conv_id)
+        if source:
+            clauses.append("source = ?")
+            params.append(source)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        rows = await self.query(sql, params)
+        for row in rows:
+            try:
+                row["ids"] = json.loads(row.pop("ids_json", "[]") or "[]")
+            except json.JSONDecodeError:
+                row["ids"] = []
+        return rows
+
+    async def recall_stats(self) -> dict:
+        row = await self.query_one(
+            "SELECT COUNT(*) AS total, "
+            "SUM(CASE WHEN ok = 1 THEN 1 ELSE 0 END) AS ok_count, "
+            "SUM(CASE WHEN ok = 1 AND count > 0 THEN 1 ELSE 0 END) AS hit_count, "
+            "SUM(count) AS total_cards "
+            "FROM recall_log"
+        )
+        row = row or {}
+        total = row.get("total") or 0
+        hit = row.get("hit_count") or 0
+        return {
+            "total": total,
+            "ok": row.get("ok_count") or 0,
+            "hit": hit,
+            "miss": (row.get("ok_count") or 0) - hit,
+            "failed": total - (row.get("ok_count") or 0),
+            "total_cards": row.get("total_cards") or 0,
+            # 命中率：召回成功且真的带回了卡片的比例。
+            # 这个数字低说明 Serein 的阈值或索引有问题。
+            "hit_rate": round(hit / total, 3) if total else 0.0,
+        }
+
+    # ── 朋友圈 ──────────────────────────────────────
+
+    async def add_moment(self, author: str, content: str,
+                         attachments: list[dict] | None = None,
+                         source: str = "") -> dict:
+        moment = {
+            "id": new_id("mom"),
+            "author": author,
+            "content": content,
+            "attachments_json": json.dumps(attachments or [], ensure_ascii=False),
+            "likes": 0,
+            "replies_json": "[]",
+            "source": source,
+            "created_at": now_ts(),
+        }
+        await self.execute(
+            "INSERT INTO moments (id, author, content, attachments_json, likes, "
+            "replies_json, source, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (moment["id"], moment["author"], moment["content"], moment["attachments_json"],
+             moment["likes"], moment["replies_json"], moment["source"], moment["created_at"]),
+        )
+        return moment
+
+    async def moments(self, limit: int = 30, before: float | None = None) -> list[dict]:
+        if before is None:
+            rows = await self.query(
+                "SELECT * FROM moments ORDER BY created_at DESC LIMIT ?", (limit,))
+        else:
+            rows = await self.query(
+                "SELECT * FROM moments WHERE created_at < ? ORDER BY created_at DESC LIMIT ?",
+                (before, limit))
+        return [self._decode_moment(row) for row in rows]
+
+    async def moment_by_id(self, moment_id: str) -> dict | None:
+        row = await self.query_one("SELECT * FROM moments WHERE id = ?", (moment_id,))
+        return self._decode_moment(row) if row else None
+
+    @staticmethod
+    def _decode_moment(row: dict) -> dict:
+        out = dict(row)
+        for key, target, default in (("attachments_json", "attachments", []),
+                                     ("replies_json", "replies", [])):
+            raw = out.pop(key, None)
+            try:
+                out[target] = json.loads(raw) if raw else default
+            except json.JSONDecodeError:
+                out[target] = default
+        out["likes"] = out.get("likes") or 0
+        return out
+
+    async def add_moment_reply(self, moment_id: str, author: str, content: str) -> dict | None:
+        moment = await self.moment_by_id(moment_id)
+        if moment is None:
+            return None
+        replies = list(moment.get("replies") or [])
+        reply = {"author": author, "content": content, "created_at": now_ts()}
+        replies.append(reply)
+        await self.execute(
+            "UPDATE moments SET replies_json = ? WHERE id = ?",
+            (json.dumps(replies, ensure_ascii=False), moment_id),
+        )
+        return reply
+
+    async def like_moment(self, moment_id: str, delta: int = 1) -> int | None:
+        await self.execute(
+            "UPDATE moments SET likes = MAX(0, likes + ?) WHERE id = ?", (delta, moment_id))
+        row = await self.query_one("SELECT likes FROM moments WHERE id = ?", (moment_id,))
+        return row["likes"] if row else None
+
+    async def delete_moment(self, moment_id: str) -> bool:
+        count = await self.execute("DELETE FROM moments WHERE id = ?", (moment_id,))
+        return count > 0
 
     # ── 键值设置 ────────────────────────────────────
 

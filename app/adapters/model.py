@@ -9,10 +9,13 @@
 1. **trust_env**：模型端点在公网时可能需要系统代理，
    与 Serein（Tailscale 内网，强制不走代理）相反，所以分开配置。
 
-2. **间歇性 502**：走 Serein 网关时实测到同一 payload 时而 200 时而 502，
-   重试即恢复 —— 是上游抖动，不是请求有问题。但如果不重试，
-   用户会看到一条**没有任何解释的空回复**。所以这里必须带退避重试，
-   并且只在"还没吐出任何内容"时重试（吐到一半再重试会产生重复文本）。
+2. **间歇性 502 与"小 max_tokens 返回空"**：走 Serein 网关时实测到
+   * 同一 payload 时而 200 时而 502 —— 重试即恢复
+   * `max_tokens` 偏小时（4/8/16/32）会返回**空内容**且不报错，
+     约 128 以上才正常
+   两条都会让用户看到一条**没有任何解释的空回复**。所以这里：
+     * 带退避重试，且只在"还没吐出任何内容"时重试
+     * 空回复**不算成功** —— 值得重试一次，因为可能是网关抖动
 """
 
 from __future__ import annotations
@@ -117,7 +120,15 @@ class ModelClient:
                             if piece:
                                 emitted = True
                                 yield piece
-                return          # 正常结束
+
+                if not emitted and attempt < self.max_attempts:
+                    # 200 但一个字都没有。实测这在 Serein 网关上是**可重试**的
+                    # （小 max_tokens 或上游抖动都会这样），不重试的话
+                    # 用户会收到一条没有解释的空回复。
+                    last_error = ModelError(f"模型返回空内容（第 {attempt} 次）")
+                    await asyncio.sleep(min(2 ** (attempt - 1), 4))
+                    continue
+                return          # 正常结束（或有内容但未耗尽重试）
             except (httpx.RequestError, ModelError) as exc:
                 last_error = exc
                 # 已经吐出内容就不重试 —— 重试会导致前端看到重复文本

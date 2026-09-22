@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.adapters.mcp import SereinMcp
 from app.adapters.model import ModelClient
 from app.adapters.serein import SereinMemory
 from app.config import BASE_DIR, settings
@@ -51,6 +52,7 @@ class AppState:
     def __init__(self) -> None:
         self.db: Database | None = None
         self.memory: SereinMemory | None = None
+        self.mcp: SereinMcp | None = None
         self.model: ModelClient | None = None
         self.pipeline: ChatPipeline | None = None
         self.scheduler: WakeScheduler | None = None
@@ -80,6 +82,12 @@ async def lifespan(app: FastAPI):
 
     memory = SereinMemory(db, settings)
     await memory.start()
+    # MCP 与 Hook 是**两条独立链路**，故障模式不同：
+    #   Hook  (/api/hook/recall)     读记忆，用于对话
+    #   MCP   (/serein/mcp)          读日记等，用于功能页
+    # 分开两个客户端，任一条挂了不影响另一条。
+    mcp = SereinMcp(settings)
+    await mcp.start()
     model = ModelClient(settings)
     registry = build_default_registry()
     pipeline = ChatPipeline(db, memory, model, registry, settings)
@@ -87,9 +95,10 @@ async def lifespan(app: FastAPI):
     # 两者共享同一个 model 实例；但运行中替换模型时必须两边一起改，
     # 所以这里提供一个单一入口，避免以后漏改一处。
     state.model = model
+    state.mcp = mcp
     pipeline.model = scheduler.model = model
 
-    state.db, state.memory, state.model = db, memory, model
+    state.db, state.memory = db, memory
     state.pipeline, state.scheduler = pipeline, scheduler
 
     if settings.scheduler_enabled:
@@ -98,9 +107,10 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await scheduler.stop()
+        await mcp.close()
         await memory.close()
         await db.close()
-        state.db = state.memory = state.model = None
+        state.db = state.memory = state.model = state.mcp = None
         state.pipeline = state.scheduler = None
 
 
@@ -108,10 +118,14 @@ app = FastAPI(title="Aion / Harlan", version="0.1.0", lifespan=lifespan)
 
 # AionsHome 兼容适配层：移植来的前端调的是它的 API 形状（31 个端点）。
 # 放在 /api 下，与下面的原生路由不冲突（路径不重叠）。
-from app import routes_compat  # noqa: E402
+from app import routes_compat, routes_features  # noqa: E402
 
 routes_compat.bind(state)
 app.include_router(routes_compat.router)
+
+# 新前端用的功能接口（日程/日记/朋友圈/召回日志/设置/诊断）
+routes_features.bind(state)
+app.include_router(routes_features.router)
 
 
 # ─────────────────────────────────────────────────────────────

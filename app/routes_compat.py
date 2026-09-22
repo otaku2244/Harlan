@@ -353,12 +353,20 @@ async def put_worldbook(body: dict) -> dict:
 
 
 @router.get("/models")
-async def get_models() -> dict:
-    """前端拿它填模型下拉框。"""
+async def get_models() -> list:
+    """前端拿它填模型下拉框。
+
+    ⚠️ 必须返回**裸数组**，不能包成 {"models":[...]}。
+    实测教训：前端是
+        [models, worldBook, conversations] = await Promise.all([...])
+        renderModelSelect() → models.filter(...)
+    包一层对象会让 models.filter 报 "is not a function"，
+    整个 init() 中断 —— 表现是"页面能开但点发送没反应"，
+    而且错误被 .catch() 吞进 console.warn，界面上完全看不出来。
+    """
     from app.config import settings
     name = settings.model_name or "（未配置）"
-    return {"models": [{"id": name, "name": name, "vision": False}],
-            "current": name}
+    return [{"id": name, "name": name, "vision": False}]
 
 
 @router.get("/chatroom/config")

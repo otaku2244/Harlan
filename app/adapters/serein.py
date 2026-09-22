@@ -66,8 +66,39 @@ class SereinMemory:
         window_id: str,
         max_notes: int | None = None,
         extra_delivered: list[str] | None = None,
+        *,
+        actor: str = "",
+        conv_id: str = "",
+        source: str = "chat",
+        log: bool = True,
     ) -> RecallResult:
-        """召回。冷却 ID 从本地回执表读取（不依赖 Serein 的交付历史）。"""
+        """召回。冷却 ID 从本地回执表读取（不依赖 Serein 的交付历史）。
+
+        `actor` / `conv_id` / `source` 只用于写召回日志，不影响召回本身。
+        日志是给前端显示"它在想什么"用的 —— 没有它，用户只能看到回复，
+        看不到回复背后召回了哪些记忆。
+        """
+        result = await self._recall_inner(query, window_id, max_notes, extra_delivered)
+        if log:
+            try:
+                await self.db.log_recall(
+                    window_id=window_id, actor=actor, query=query,
+                    ok=result.ok, ids=result.recalled_ids,
+                    context=result.additional_context,
+                    error=result.error or result.skipped,
+                    source=source, conv_id=conv_id,
+                )
+            except Exception:  # noqa: BLE001 — 记日志失败不该影响对话
+                pass
+        return result
+
+    async def _recall_inner(
+        self,
+        query: str,
+        window_id: str,
+        max_notes: int | None = None,
+        extra_delivered: list[str] | None = None,
+    ) -> RecallResult:
         if not self.enabled:
             return RecallResult(ok=False, skipped="Serein 未配置")
 
