@@ -1,0 +1,21 @@
+# 密钥与本地状态
+.env
+.spike-state.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 数据（正式版）
+data/
+*.db
+*.sqlite3

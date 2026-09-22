@@ -1,0 +1,192 @@
+# Aion / Harlan — 后端
+
+人机恋前端 + 后端。VPS 上跑 FastAPI 后端 + Serein 记忆，手机端做哨兵，前端从 AionsHome 移植。
+
+设计文档见 [`Aion_拼装方案_v0.3.md`](Aion_拼装方案_v0.3.md)。
+
+---
+
+## 当前进度
+
+```
+[✅] P-1  spike.py 尖刺
+[✅] P0   后端骨架（数据库 / 上下文 / 指令 / 记忆 / 模型 / WS / HTTP）
+[  ] P0'  前端移植（待确认前端来源）
+[  ] P1   Serein Hook 客户端（已有适配器，待真链路验证）+ 归档通道
+[  ] P2   Android 壳 + 哨兵
+[  ] P3   唤醒三件套
+[  ] P4   自建唤醒
+[  ] P5   能力指令
+[  ] P6   端侧硬件
+```
+
+---
+
+## 跑起来
+
+```bash
+pip install httpx fastapi uvicorn
+
+cp .env.example .env      # 填 Serein 与模型
+uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
+| 端点 | 说明 |
+|---|---|
+| `GET /healthz` | 健康检查（含 Serein / 模型是否已配置） |
+| `GET /api/bootstrap` | 前端启动快照（角色 / 能力 / 会话） |
+| `GET /api/conversations/{id}/messages` | 消息分页 |
+| `POST /api/chat` | 发消息，返回 **SSE** 事件流 |
+| `PATCH /api/capabilities/{key}` | 开关能力（等于改提示词里列出什么） |
+| `GET /ws` | WebSocket 多端同步 |
+
+`POST /api/chat` 的事件类型：`recall` `stream_start` `stream_delta`
+`capability` `capability_note` `stream_end` `delivery` `done` `error`。
+
+**同一条事件流也会广播到 WebSocket**，所以"单端重放"和"多端同步"是同一份数据。
+
+---
+
+## 测试（全部不需要网络）
+
+```bash
+python spike.py --self-test          # 尖刺结构自检，15 项
+python tests/test_spike_offline.py   # 尖刺 × 假 Serein，在线契约
+python tests/test_core.py            # P0 核心：数据库 / 上下文 / 指令
+python tests/test_http.py            # P0 HTTP：SSE / 续轮 / 落库 / WS 广播
+```
+
+---
+
+## 文件
+
+| 文件 | 作用 |
+|---|---|
+| `spike.py` | P-1 尖刺（可独立运行，用于验证真链路） |
+| `app/main.py` | FastAPI 应用：路由 + 生命周期 |
+| `app/config.py` | 配置（全部来自环境变量） |
+| `app/db.py` | SQLite 七张表 + 线程安全封装 |
+| `app/ws.py` | WebSocket 多端同步（每连接一个发送任务） |
+| `app/core/ids.py` | 可排序 ID |
+| `app/core/context.py` | 上下文组装 |
+| `app/core/directives.py` | 指令注册表 + 解析/执行 |
+| `app/core/pipeline.py` | 对话主流程（含指令续轮） |
+| `app/adapters/serein.py` | Serein 记忆适配器 |
+| `app/adapters/model.py` | 模型流式调用 |
+| `docs/dev-fake-serein.py` | 假 Serein |
+
+### 三条结构底线（P0 就位，**别在后续改动里省掉**）
+
+1. **能力清单是数据** —— `capabilities` 表 + `DirectiveRegistry`。
+   表决定"对模型可见吗"，注册表决定"怎么执行"。加能力 = 插一行 + `register()`，**不碰核心**。
+2. **`messages.attachments_json`** —— 图片/语音/音乐卡/指令回执全靠它。
+3. **指令 → 执行 → 续轮** —— `pipeline.run_turn()`。
+   排程类指令（`[NEXT_CHAT:5]`）不续轮；回灌类指令（`[WEB_SEARCH:...]`）会带着结果再调一次模型。
+
+---
+
+## 本机快速验证（不需要 VPS、不需要真 Key）
+
+```bash
+# 结构自检：不联网，15 项
+python spike.py --self-test
+
+# 在线集成测试：真的走 HTTP，对假 Serein 跑召回 → 组装 → 登记 → 冷却
+python tests/test_spike_offline.py
+```
+
+两者全绿只说明**代码结构正确**，不代表你的 Serein 可用。真链路必须在 VPS 上验证。
+
+---
+
+## 在 VPS 上跑尖刺（真正的验证）
+
+```bash
+cp .env.example .env
+vim .env          # 填 SEREIN_BASE_URL / SEREIN_GATEWAY_KEY / 模型三项
+
+python spike.py "今天有点累"
+```
+
+期望看到五步：
+
+```
+[1/5] 召回（窗口 spike-001）…     ✓ 召回 2 条：['scene:...', 'event:...']
+[2/5] 组装上下文…                 ✓ 8 条消息，system 1234 字
+[3/5] 流式调模型…                 <流式输出>
+[4/5] 登记交付…                   ✓ 已登记 receipt=...
+[5/5] 完成
+```
+
+**这一步要盯的三件事**：
+
+1. **召回是否真的返回内容** —— 返回空且不报错，说明 Serein 侧索引或模型没配好
+2. **`injected` 是否为 false** —— 按 Hook 文档它应是 false（待交付材料 ≠ 已注入）
+3. **卡片手感** —— 最多 2 张，和你以前"每次 8 条背景记忆"比一比，够不够
+
+只想看组装结果、不花钱调模型：
+
+```bash
+python spike.py --provider echo "随便说点什么"
+```
+
+---
+
+## 部署方式（重要）
+
+⚠️ **不要"本机写完一次性搬上 VPS"。** 原因：
+
+| 本机（开发机） | VPS |
+|---|---|
+| ✅ Python 3.13 | ✅ 唯一能连到 Serein 的地方 |
+| ❌ 无 Docker（跑不了 Serein 本地副本） | ✅ Linux（真实部署环境） |
+| ❌ 无 Tailscale（连不到 VPS） | ✅ 有 Git |
+| ❌ 无 Git | |
+
+所以：**本机写代码 + 离线自检；VPS 跑验证 + 部署。**
+
+推荐流程：
+
+```
+本机  py spike.py --self-test && py tests/test_spike_offline.py
+      py -m py_compile spike.py                 ← 至少确认能编译
+  ↓   （用你选的方式传）
+VPS   python spike.py "测试"                    ← 真链路验证
+```
+
+代码本身是**平台中立**的（纯 Python、无 Windows 依赖、路径用 `pathlib`），
+所以搬运不会有兼容问题——**问题只在于"在哪验证"**。
+
+### 已经踩到的两个环境坑（记下来，别人也会踩）
+
+1. **httpx 默认 `trust_env=True` 会连内网地址超时。** 本机实测：连 `127.0.0.1` 的
+   `ReadTimeout`，关掉立刻 200。所以 `SereinHook` 强制 `trust_env=False`——
+   Serein 在 Tailscale 内网，本来就不该走 HTTP 代理。模型端点相反（可能在公网），
+   所以那里保留 `trust_env`，可用 `MODEL_TRUST_ENV=0` 关掉。
+2. **Windows 控制台默认 GBK**，非 ASCII 符号会 `UnicodeEncodeError`。
+   `spike.py` 启动时强制 stdout/stderr 走 UTF-8；在 Linux 上无副作用。
+
+---
+
+## 配置项
+
+| 变量 | 说明 |
+|---|---|
+| `SEREIN_BASE_URL` | Serein 实例根地址，**不要加 `/v1`** |
+| `SEREIN_GATEWAY_KEY` | 安装时生成的 Key。留在服务端，不进前端 JS |
+| `SEREIN_WINDOW_ID` | **稳定窗口 ID**：同一会话不变，新会话换一个。共用一个固定值会让轮次与冷却串台 |
+| `SEREIN_MAX_NOTES` | 单轮最多带几张卡（Serein 上限 2） |
+| `MODEL_BASE_URL` / `MODEL_API_KEY` / `MODEL_NAME` | OpenAI 兼容端点 |
+| `SPIKE_PROVIDER` | `openai` 真调模型；`echo` 只打印上下文 |
+| `AI_DISPLAY_NAME` | 角色显示名，默认 `Harlan` |
+| `AI_PERSONA` | 人设正文（正式版归 `actors` 表） |
+
+---
+
+## 下一步（P0）要守的三条结构底线
+
+P-1 验证通过后进入 P0。这三样**在 MVP 里就不能省**，否则第二阶段是重构而不是搬运：
+
+1. **能力清单是数据**（`capabilities` 表）—— 加玩具/摄像头 = 注册一行 + 写 handler，不碰核心
+2. **`messages.attachments_json`** —— 哪怕永远是 `[]`。图片/语音/音乐卡/指令回执全靠它
+3. **模型调用预留"指令 → 执行 → 续轮"** —— `[WEB_SEARCH]` / `[CAM_CHECK]` 这类能力的基础
