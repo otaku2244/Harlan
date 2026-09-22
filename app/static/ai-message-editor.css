@@ -1,0 +1,45 @@
+/* A comfortable writing area, shared by private and group chats. */
+.ai-text-editing,
+.ai-text-editing .msg-body,
+.ai-text-editing .msg-content {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ai-text-editor { width: 100%; min-width: 0; }
+.ai-edit-textarea {
+  display: block;
+  width: 100%;
+  height: 45vh;
+  min-height: 320px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 14px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.7;
+  outline-offset: 2px;
+}
+.ai-edit-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+.ai-edit-actions button {
+  min-height: 40px;
+  padding: 8px 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+.ai-edit-actions .ai-edit-save { border-color: var(--accent); color: var(--accent); }
+.ai-edit-actions button:disabled { opacity: .55; cursor: wait; }
+.ai-edit-error { color: #e97878; font-size: 13px; margin-top: 6px; }
+.ai-edit-error:empty { display: none; }
+@media (max-width: 600px) {
+  .ai-edit-textarea { min-height: 280px; padding: 12px; }
+}

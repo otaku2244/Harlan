@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>活动日志</title>
+<link rel="stylesheet" href="/static/common.css">
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ff8359">
+<style>
+/* ── 筛选栏 ── */
+.filter-row {
+  display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;
+}
+.filter-row select, .filter-row button {
+  background:var(--surface2); color:var(--text); border:1px solid var(--border);
+  border-radius:6px; padding:6px 10px; font-size:13px; outline:none; cursor:pointer;
+}
+.filter-row select { flex:1; min-width:0; }
+.filter-row .active-filter {
+  background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600;
+}
+.activity-tabs {
+  display:flex; gap:6px; padding:8px 12px 0; background:var(--surface); flex-shrink:0;
+}
+.activity-tab {
+  flex:1; border:1px solid var(--border); background:var(--surface2); color:var(--text2);
+  border-radius:8px; padding:8px 0; font-size:13px; font-weight:600; cursor:pointer;
+}
+.activity-tab.active {
+  background:var(--accent); border-color:var(--accent); color:#fff;
+}
+.page-content {
+  display:flex; flex-direction:column; overflow:hidden; min-height:0;
+}
+.activity-pane { display:none; }
+.activity-pane.active {
+  display:flex; flex-direction:column; flex:1; min-height:0;
+}
+.context-pane.active { overflow-y:auto; padding:2px 12px 12px; }
+.context-panel {
+  margin:0; overflow:visible; background:transparent; padding:2px;
+}
+.context-head { display:flex; align-items:center; gap:10px; margin:4px 0 12px; }
+.context-head strong { font-size:17px; }
+.context-head span { color:var(--text3); font-size:12px; flex:1; }
+.context-head button {
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  border-radius:8px; padding:7px 12px; font-size:12px; cursor:pointer;
+}
+.context-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.context-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:14px; min-width:0; box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.context-card.context-wide { grid-column:1 / -1; }
+.context-card h4 { margin:0 0 8px; color:var(--accent); font-size:13px; }
+.context-card div, .context-card pre {
+  margin:0; color:var(--text); font-size:13px; line-height:1.65; white-space:pre-wrap;
+  word-break:break-word; font-family:inherit;
+}
+.context-card pre { color:var(--text2); }
+.context-permission { margin:10px 2px 0; color:var(--text3); font-size:11px; }
+.context-permission button { margin-left:6px; }
+@media (max-width:520px) {
+  .context-pane.active { padding:2px 7px 8px; }
+  .context-head { margin-bottom:8px; }
+  .context-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+  .context-card { padding:9px; border-radius:9px; }
+  .context-card h4 { margin-bottom:5px; font-size:12px; }
+  .context-card div, .context-card pre { font-size:11px; line-height:1.5; }
+  .context-card.context-wide { grid-column:1 / -1; }
+}
+
+/* ── 统计信息 ── */
+.stats-bar {
+  display:flex; gap:12px; margin-bottom:10px; font-size:12px; color:var(--text2);
+  flex-wrap:wrap;
+}
+.stats-bar .stat-item {
+  display:flex; align-items:center; gap:4px;
+}
+.stats-bar .stat-dot {
+  width:8px; height:8px; border-radius:50%; flex-shrink:0;
+}
+.stat-dot.pc { background:#4285f4; }
+.stat-dot.phone { background:#34a853; }
+
+/* ── 日志列表 ── */
+.log-list {
+  flex:1; min-height:0; overflow-y:auto;
+  border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:4px;
+}
+.log-entry {
+  padding:8px 10px; border-bottom:1px solid var(--border); font-size:13px; line-height:1.5;
+  display:flex; align-items:flex-start; gap:8px;
+}
+.log-entry:last-child { border-bottom:none; }
+
+.log-device {
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:20px; height:20px; border-radius:4px; font-size:11px; flex-shrink:0;
+  font-weight:600; padding:0 4px; margin-top:1px;
+}
+.log-device.pc { background:#e3f2fd; color:#1565c0; }
+.log-device.phone { background:#e8f5e9; color:#2e7d32; }
+.log-device.home { background:#fff3e0; color:#b45309; }
+
+.log-body { flex:1; min-width:0; }
+.log-time { color:var(--text2); font-size:11px; font-family:monospace; margin-right:6px; }
+.log-app { font-weight:600; color:var(--text); }
+.log-action { color:var(--text2); font-size:12px; }
+.log-title { color:var(--text2); font-size:12px; margin-top:2px; word-break:break-all; }
+.log-empty { padding:24px; text-align:center; color:var(--text3); font-size:14px; }
+
+/* ── 实时指示器 ── */
+.live-dot {
+  width:8px; height:8px; border-radius:50%; background:#4caf50;
+  animation:livePulse 1.5s ease-in-out infinite; display:inline-block; margin-left:6px;
+  vertical-align:middle;
+}
+@keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* ── 摘要弹窗 ── */
+.summary-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:100;
+  align-items:center; justify-content:center; padding:16px;
+}
+.summary-overlay.show { display:flex; }
+.summary-panel {
+  background:var(--surface); border-radius:12px; width:100%; max-width:520px;
+  max-height:80vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.25);
+}
+.summary-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 16px; border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.summary-header h3 { margin:0; font-size:15px; }
+.summary-close {
+  background:none; border:none; font-size:20px; color:var(--text2); cursor:pointer; padding:0 4px;
+}
+.summary-body {
+  overflow-y:auto; padding:12px 16px; flex:1;
+}
+.summary-item {
+  padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; line-height:1.6;
+}
+.summary-item:last-child { border-bottom:none; }
+.summary-time {
+  font-family:monospace; font-size:12px; color:var(--accent); font-weight:600; margin-right:8px;
+}
+.summary-count {
+  font-size:11px; color:var(--text3); margin-left:6px;
+}
+.summary-text { color:var(--text); }
+.summary-empty { padding:32px; text-align:center; color:var(--text3); font-size:14px; }
+.summary-idle { color:var(--text3); font-style:italic; }
+.summary-stats {
+  padding:10px 16px; border-top:1px solid var(--border); font-size:12px; color:var(--text2);
+  text-align:center; flex-shrink:0;
+}
+.timeline-toolbar {
+  display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-shrink:0;
+}
+.timeline-toolbar select, .timeline-toolbar button, .timeline-toolbar input {
+  border:1px solid var(--border); background:var(--surface2); color:var(--text);
+  border-radius:7px; padding:7px 10px; font-size:13px; outline:none;
+}
+.timeline-toolbar select { flex:1; min-width:0; }
+.timeline-toolbar input { width:72px; }
+.idle-toolbar-label {
+  font-size:12px; color:var(--text2); white-space:nowrap;
+}
+.idle-test-btn.running {
+  opacity:.7; pointer-events:none;
+}
+.timeline-list {
+  flex:1; min-height:0; overflow-y:auto;
+  background:transparent; padding:4px 0 8px;
+}
+.timeline-empty {
+  padding:32px 18px; text-align:center; color:var(--text3); font-size:14px;
+}
+.timeline-row {
+  position:relative; display:grid; grid-template-columns:22px 1fr;
+  gap:10px; padding:4px 8px 18px 4px;
+}
+.timeline-row::before {
+  content:""; position:absolute; left:14px; top:0; bottom:0;
+  width:1px; background:var(--border);
+}
+.timeline-row:first-child::before { top:12px; }
+.timeline-row:last-child::before { bottom:auto; height:12px; }
+.timeline-dot {
+  position:relative; z-index:1; width:9px; height:9px; border-radius:50%;
+  background:var(--accent); margin:8px auto 0; box-shadow:0 0 0 4px var(--surface);
+}
+.timeline-time {
+  color:var(--accent); font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size:12px; line-height:18px;
+}
+.timeline-main { min-width:0; }
+.timeline-title {
+  display:inline; color:var(--text); font-size:14px; font-weight:600;
+  line-height:1.45; cursor:pointer; user-select:none; -webkit-user-select:none;
+  -webkit-touch-callout:none;
+}
+.timeline-title:active { color:var(--accent); }
+.timeline-line-content { padding-top:3px; }
+.timeline-popover {
+  position:fixed; z-index:260; max-width:min(310px, calc(100vw - 28px));
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.18); padding:10px 12px;
+  color:var(--text); font-size:13px; line-height:1.55; display:none;
+}
+.timeline-popover.show { display:block; }
+.timeline-popover-title {
+  font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;
+}
+.timeline-popover-time {
+  color:var(--accent); font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size:11px; margin-bottom:6px;
+}
+.timeline-popover-detail {
+  color:var(--text2); white-space:pre-wrap; word-break:break-word;
+}
+.timeline-images {
+  display:grid; grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:6px; margin-top:8px; max-width:300px;
+}
+.timeline-images img {
+  width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px;
+  background:var(--surface2); display:block; cursor:pointer;
+}
+.timeline-meta {
+  margin:0 0 6px 32px; color:var(--text3); font-size:11px;
+}
+</style>
+</head>
+<body>
+<div class="sub-page">
+  <div class="top-bar">
+    <button class="back-btn" onclick="location.href='/'">⬅</button>
+    <h2>📊 活动日志 <span class="live-dot" id="liveDot" title="实时接收中"></span></h2>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text2);">
+      <span>AI联动</span>
+      <label class="toggle-switch" title="开启后AI可以查看设备动态、哨兵/监督也会携带活动摘要">
+        <input type="checkbox" id="activityTrackingToggle" onchange="toggleActivityTracking(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+  <div class="activity-tabs">
+    <button class="activity-tab active" id="tabContext" onclick="switchActivityTab('context')">当前状态</button>
+    <button class="activity-tab" id="tabLogs" onclick="switchActivityTab('logs')">设备记录</button>
+  </div>
+  <div class="page-content">
+    <div class="activity-pane context-pane active" id="contextPane">
+      <section class="context-panel">
+        <div class="context-head">
+          <strong>🧭 当前设备情境</strong>
+          <span id="contextUpdated">等待数据</span>
+          <button onclick="loadDeviceContext()">刷新</button>
+        </div>
+        <div class="context-grid">
+          <article class="context-card"><h4>💻 电脑状态</h4><div id="contextPc">暂无电脑状态</div></article>
+          <article class="context-card"><h4>📱 手机状态</h4><div id="contextPhone">暂无手机状态</div></article>
+          <article class="context-card context-wide"><h4>🔔 重要通知</h4><div id="contextNotifications">暂无近期通知</div></article>
+          <article class="context-card context-wide"><h4>✨ 实际注入 Prompt</h4><pre id="contextPrompt">当前不会注入</pre></article>
+        </div>
+        <div class="context-permission" id="contextPermission"></div>
+      </section>
+    </div>
+    <div class="activity-pane" id="logsPane">
+    <!-- 筛选 -->
+    <div class="filter-row">
+      <select id="viewMode" onchange="onViewModeChange()">
+        <option value="recent" selected>最近 8 小时</option>
+        <option value="date">按日期查看</option>
+      </select>
+      <select id="dateSelect" onchange="loadByDate()" style="display:none"></select>
+      <button id="filterAll" class="active-filter" onclick="setDeviceFilter('all')">全部</button>
+      <button id="filterPC" onclick="setDeviceFilter('pc')">💻</button>
+      <button id="filterPhone" onclick="setDeviceFilter('phone')">📱</button>
+      <button onclick="refresh()">🔄</button>
+      <button onclick="clearAllLogs()" style="color:var(--danger)">🗑</button>
+      <button onclick="openSummary()" title="查看活动摘要">📋</button>
+    </div>
+    <!-- 统计 -->
+    <div class="stats-bar" id="statsBar"></div>
+    <!-- 日志 -->
+    <div class="log-list" id="logList"><div class="log-empty">暂无活动记录</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="timeline-popover" id="timelinePopover"></div>
+
+<!-- 摘要弹窗 -->
+<div class="summary-overlay" id="summaryOverlay" onclick="if(event.target===this)closeSummary()">
+  <div class="summary-panel">
+    <div class="summary-header">
+      <h3>📋 活动摘要（每10分钟）</h3>
+      <button class="summary-close" onclick="closeSummary()">✕</button>
+    </div>
+    <div class="summary-body" id="summaryBody">
+      <div class="summary-empty">加载中...</div>
+    </div>
+    <div class="summary-stats" id="summaryStats"></div>
+  </div>
+</div>
+
+<script src="/static/theme.js?v=theme-20260606"></script>
+<script src="/static/common.js"></script>
+<script>
+let allEntries = [];
+let deviceFilter = 'all';
+let currentActivityTab = 'context';
+let logsLoaded = false;
+let timelineLoaded = false;
+let timelineItems = [];
+let timelinePressTimer = null;
+let timelinePopoverRequest = 0;
+let idleConfig = null;
+let deviceContextTimer = null;
+
+const contextValueLabels = {
+  on:'亮屏', off:'熄屏', active:'刚有输入', recent:'近期有输入', idle:'已空闲', unavailable:'不可用',
+  portrait:'竖屏', portrait_upside_down:'倒竖屏', landscape_left:'左横屏', landscape_right:'右横屏',
+  face_up:'正面朝上', face_down:'扣放', tilted:'倾斜', still:'静止', slight:'轻微移动',
+  moving:'移动中', strong:'明显晃动', dark:'黑暗', dim:'较暗', normal:'正常光线', bright:'明亮',
+  near:'被遮挡/靠近', far:'未遮挡'
+};
+const contextFieldLabels = {
+  posture:'姿态', motion:'动作', light:'环境光线', proximity:'距离传感器',
+  screen:'屏幕', foreground_app:'前台应用'
+};
+
+function contextLabel(value) { return contextValueLabels[value] || value || '未知'; }
+
+function contextAge(timestamp) {
+  const seconds = Math.max(0, Date.now() / 1000 - Number(timestamp || 0));
+  if (!timestamp || seconds < 60) return '刚刚';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
+  return `${Math.floor(seconds / 3600)} 小时前`;
+}
+
+async function loadDeviceContext() {
+  try {
+    const data = await api('GET', '/api/device-context/status');
+    const pc = data.pc || {};
+    const phone = data.phone || {};
+    const pcLines = [
+      `显示器：${contextLabel(pc.display)}`,
+      `键鼠：${contextLabel(pc.input_state)}${Number.isFinite(pc.idle_seconds) ? `（${contextAge(Date.now() / 1000 - pc.idle_seconds)}）` : ''}`,
+      pc.app ? `前台应用：${pc.app}` : '',
+      pc.title ? `窗口：${pc.title}` : ''
+    ].filter(Boolean);
+    const phoneLines = Object.entries(phone).map(([key, slot]) =>
+      `${contextFieldLabels[key] || key}：${contextLabel(slot?.display_value || slot?.value)}（${contextAge(slot?.observed_at)}）`);
+    $('contextPc').textContent = pcLines.join('\n') || '暂无电脑状态';
+    $('contextPhone').textContent = phoneLines.join('\n') || '暂无手机状态';
+
+    const notifications = data.notifications || [];
+    const filtered = data.filtered_notifications || [];
+    const notificationLines = notifications.map(item => {
+      const title = item.title || '通知';
+      const detail = item.text && item.text !== item.title ? `：${item.text}` : '';
+      return `${item.app_name || item.package_name || '通知'} · ${title}${detail}（${contextAge(item.observed_at || item.posted_at)}）`;
+    });
+    filtered.slice(0, 3).forEach(item => notificationLines.push(
+      `已过滤：${item.app_name || item.package_name || '通知'}（${item.filter_reason || '低价值'}）`));
+    $('contextNotifications').textContent = notificationLines.join('\n') || '暂无近期通知';
+    $('contextPrompt').textContent = data.prompt || '当前不会注入';
+    $('contextUpdated').textContent = data.updated_at
+      ? `更新 ${new Date(data.updated_at * 1000).toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'})}`
+      : '等待数据';
+    renderDeviceContextPermission();
+  } catch (_error) {
+    $('contextUpdated').textContent = '加载失败';
+  }
+}
+
+function renderDeviceContextPermission() {
+  const el = $('contextPermission');
+  if (window.AionDeviceContext) {
+    let enabled = false;
+    try { enabled = !!window.AionDeviceContext.hasNotificationAccess(); } catch (_error) {}
+    el.innerHTML = enabled
+      ? '通知读取权限：已开启'
+      : '通知读取权限：未开启 <button onclick="openNotificationContextSettings()">去授权</button>';
+  } else {
+    el.textContent = '通知读取权限需要在手机 App 的活动日志页授权';
+  }
+}
+
+function openNotificationContextSettings() {
+  try { window.AionDeviceContext?.openNotificationAccessSettings(); } catch (_error) {}
+}
+
+function syncDeviceContextTimer() {
+  if (deviceContextTimer) clearInterval(deviceContextTimer);
+  deviceContextTimer = null;
+  if (!document.hidden) deviceContextTimer = setInterval(loadDeviceContext, 15000);
+}
+
+function switchActivityTab(tab) {
+  hideTimelinePopover();
+  currentActivityTab = tab;
+  $('tabContext').classList.toggle('active', tab === 'context');
+  $('tabLogs').classList.toggle('active', tab === 'logs');
+  $('contextPane').classList.toggle('active', tab === 'context');
+  $('logsPane').classList.toggle('active', tab === 'logs');
+  if (tab === 'context') loadDeviceContext();
+  if (tab === 'logs' && !logsLoaded) loadRecent();
+}
+
+function timelineDate(ts) {
+  const d = new Date(ts * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function safeVisitLabel(value, fallback) {
+  let safe = String(value || '').replace(/https?:\/\/[^\s<>'"]+/gi, '链接');
+  safe = safe.replace(/\b(?:authorization|bearer|visitor[_ -]?key|oauth[_ -]?token)\b[^，。；;]*/gi, '保密信息');
+  safe = safe.replace(/\b(?:get_lounge_info|claim_identity|begin_visit|talk_to_host|get_visit_state|end_visit)\b/gi, '串门流程');
+  return safe.trim().slice(0, 80) || fallback;
+}
+
+function safeAutonomousVisitReason(visit) {
+  const raw = String(visit?.error || '');
+  const reasons = [
+    ['action_end', '这次聊天自然告一段落'],
+    ['max_turns', '聊到了本次回合上限'],
+    ['visitor_locked', '对方暂时不方便接待'],
+    ['visitor_paused', '对方暂时停止接待'],
+    ['quota_exhausted', '对方今天的接待额度已用完'],
+    ['lounge_closed', '对方的会客室暂未开放'],
+    ['visitor_busy', '对方当时正在接待别人'],
+    ['service_busy', '对方当时有些忙'],
+    ['request_conflict', '这次拜访与另一场会面冲突'],
+    ['visit_timeout', '这次拜访等待时间过长'],
+    ['connection_failed', '这次没有顺利联系上对方'],
+    ['generation_failed', '聊天生成中途停止'],
+    ['friend_disabled', '这位好友当前已停用'],
+  ];
+  const matched = reasons.find(([code]) => raw.includes(code));
+  if (matched) return matched[1];
+  return visit?.status === 'completed' ? '拜访顺利结束' : '拜访过程中出现了状况';
+}
+
+function autonomousVisitTimelineItems(directory, visitsByActor, cutoff) {
+  const actors = new Map((directory?.actors || []).map(actor => [actor.id, actor.display_name]));
+  const friends = new Map((directory?.friends || []).map(friend => [`${friend.actor_id}:${friend.id}`, friend.display_name]));
+  const items = [];
+  Object.entries(visitsByActor || {}).forEach(([actorId, visits]) => {
+    (Array.isArray(visits) ? visits : []).forEach(visit => {
+      const timestamp = Number(visit.finished_at || visit.started_at || 0);
+      if (visit.trigger_source !== 'autonomy' || !['completed', 'interrupted', 'rejected'].includes(visit.status) || timestamp < cutoff) return;
+      const actorName = safeVisitLabel(actors.get(actorId), 'AI');
+      const friendName = safeVisitLabel(friends.get(`${actorId}:${visit.friend_id}`), 'AI 好友');
+      const completed = visit.status === 'completed';
+      const status = completed ? '完成' : '中断';
+      const reason = safeAutonomousVisitReason(visit);
+      items.push({
+        timestamp,
+        time: new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        kind: 'friend_visit',
+        actor: actorName,
+        actor_id: actorId,
+        title: `${actorName}拜访“${friendName}”后回家了`,
+        detail: `好友：${friendName}；回合数：${Number(visit.turn_count || 0)}；状态：${status}；原因：${reason}`,
+        source_id: visit.id,
+        attachments: [],
+      });
+    });
+  });
+  return items.sort((left, right) => right.timestamp - left.timestamp);
+}
+
+async function loadAutonomousVisitTimeline(hours) {
+  try {
+    const directory = await api('GET', '/api/lounge-friends');
+    const actors = Array.isArray(directory?.actors) ? directory.actors : [];
+    const payloads = await Promise.all(actors.map(async actor => {
+      try {
+        const payload = await api('GET', `/api/lounge-visits?actor_id=${encodeURIComponent(actor.id)}&limit=50`);
+        return [actor.id, Array.isArray(payload?.visits) ? payload.visits : []];
+      } catch (_error) {
+        return [actor.id, []];
+      }
+    }));
+    const cutoff = Date.now() / 1000 - Number(hours || 24) * 60 * 60;
+    return autonomousVisitTimelineItems(directory, Object.fromEntries(payloads), cutoff);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function renderTimelineImages(atts) {
+  if (!Array.isArray(atts) || !atts.length) return '';
+  const urls = atts.filter(u => typeof u === 'string' && u);
+  if (!urls.length) return '';
+  return `<div class="timeline-images">` + urls.map(url =>
+    `<img src="${escHtml(url)}" alt="配图" loading="lazy" onclick="window.open('${escHtml(url)}','_blank')">`
+  ).join('') + '</div>';
+}
+
+function renderTimeline(items) {
+  const el = $('timelineList');
+  const ordered = (items || []).slice().reverse();
+  timelineItems = ordered;
+  if (!ordered.length) {
+    el.innerHTML = '<div class="timeline-empty">暂无家庭动态</div>';
+    return;
+  }
+  let lastDate = '';
+  el.innerHTML = ordered.map((item, idx) => {
+    const date = timelineDate(item.timestamp);
+    const dateHtml = date !== lastDate ? `<div class="timeline-meta">${escHtml(date)}</div>` : '';
+    lastDate = date;
+    return `${dateHtml}<div class="timeline-row">
+      <div class="timeline-dot"></div>
+      <div class="timeline-main">
+        <div class="timeline-time">${escHtml(item.time || '')}</div>
+        <div class="timeline-line-content">
+          <span class="timeline-title"
+            onpointerdown="startTimelinePress(event, ${idx})"
+            onpointerup="cancelTimelinePress()"
+            onpointercancel="cancelTimelinePress()"
+            onpointerleave="cancelTimelinePress()"
+            oncontextmenu="showTimelinePopover(event, ${idx}); return false;">${escHtml(item.title || '')}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function startTimelinePress(event, idx) {
+  cancelTimelinePress();
+  const anchor = event.currentTarget;
+  timelinePressTimer = setTimeout(() => {
+    timelinePressTimer = null;
+    showTimelinePopover({ currentTarget: anchor }, idx);
+  }, 420);
+}
+
+function cancelTimelinePress() {
+  if (timelinePressTimer) {
+    clearTimeout(timelinePressTimer);
+    timelinePressTimer = null;
+  }
+}
+
+function hideTimelinePopover() {
+  timelinePopoverRequest += 1;
+  const pop = $('timelinePopover');
+  pop.classList.remove('show');
+  pop.innerHTML = '';
+}
+
+function showTimelinePopover(event, idx) {
+  cancelTimelinePress();
+  const item = timelineItems[idx];
+  if (!item) return;
+  const pop = $('timelinePopover');
+  const detail = item.detail || '暂无详情';
+  pop.innerHTML = `
+    <div class="timeline-popover-time">${escHtml(timelineDate(item.timestamp))} ${escHtml(item.time || '')}</div>
+    <div class="timeline-popover-title">${escHtml(item.title || '')}</div>
+    <div class="timeline-popover-detail">${escHtml(detail)}</div>
+    ${renderTimelineImages(item.attachments)}
+  `;
+  pop.classList.add('show');
+  const rect = event.currentTarget ? event.currentTarget.getBoundingClientRect() : { left: 14, bottom: 80 };
+  const popRect = pop.getBoundingClientRect();
+  let left = Math.min(Math.max(14, rect.left), window.innerWidth - popRect.width - 14);
+  let top = rect.bottom + 8;
+  if (top + popRect.height > window.innerHeight - 14) {
+    top = Math.max(14, rect.top - popRect.height - 8);
+  }
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+  if (item.kind === 'friend_visit' && item.actor_id && item.source_id) {
+    loadVisitTimelineDetail(item, pop);
+  }
+}
+
+async function loadVisitTimelineDetail(item, pop) {
+  const requestId = ++timelinePopoverRequest;
+  try {
+    const visit = await api(
+      'GET',
+      `/api/lounge-visits/${encodeURIComponent(item.source_id)}?actor_id=${encodeURIComponent(item.actor_id)}`
+    );
+    if (requestId !== timelinePopoverRequest || !pop.classList.contains('show')) return;
+    const messages = Array.isArray(visit?.messages) ? visit.messages : [];
+    const transcript = messages.length
+      ? messages.map(message => {
+          const sender = message.direction === 'inbound' ? '好友' : item.actor;
+          return `${sender}：${String(message.content || '')}`;
+        }).join('\n\n')
+      : '暂无往返内容';
+    pop.innerHTML = `
+      <div class="timeline-popover-time">${escHtml(timelineDate(item.timestamp))} ${escHtml(item.time || '')}</div>
+      <div class="timeline-popover-title">${escHtml(item.title || '')}</div>
+      <div class="timeline-popover-detail">${escHtml(item.detail || '')}\n\n${escHtml(transcript)}</div>
+    `;
+  } catch (_error) {
+    // 概要卡片已经可用；详情接口失败时保持概要，不覆盖它。
+  }
+}
+
+document.addEventListener('pointerdown', event => {
+  const pop = $('timelinePopover');
+  if (!pop.classList.contains('show')) return;
+  if (pop.contains(event.target) || event.target.closest('.timeline-title')) return;
+  hideTimelinePopover();
+});
+
+function scrollElementToBottom(el) {
+  if (!el) return;
+  const apply = () => { el.scrollTop = el.scrollHeight; };
+  apply();
+  requestAnimationFrame(() => {
+    apply();
+    setTimeout(apply, 80);
+    setTimeout(apply, 250);
+  });
+}
+
+function scrollTimelineToBottom() {
+  scrollElementToBottom($('timelineList'));
+}
+
+async function loadTimeline() {
+  const hours = $('timelineHours').value;
+  const el = $('timelineList');
+  el.innerHTML = '<div class="timeline-empty">加载中...</div>';
+  try {
+    const [data, friendVisits] = await Promise.all([
+      api('GET', `/api/timeline?hours=${hours}&limit=500`),
+      loadAutonomousVisitTimeline(hours),
+    ]);
+    timelineLoaded = true;
+    const items = [...(data.items || []), ...friendVisits]
+      .sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0));
+    renderTimeline(items);
+    scrollTimelineToBottom();
+  } catch(e) {
+    el.innerHTML = '<div class="timeline-empty">加载失败</div>';
+  }
+}
+
+/* ── WebSocket 实时推送 ── */
+connectCommonWS(msg => {
+  if (msg.type === 'activity_log' && msg.data) {
+    if (msg.data.device === 'home' && currentActivityTab === 'timeline') {
+      loadTimeline();
+    }
+    // 仅在"最近"模式下实时追加
+    if ($('viewMode').value === 'recent') {
+      allEntries.push(msg.data);
+      renderEntries();
+      // 自动滚到底部
+      scrollElementToBottom($('logList'));
+    }
+  }
+  if (msg.type === 'idle_event' && currentActivityTab === 'timeline') {
+    loadTimeline();
+  }
+  if (msg.type === 'device_context_changed') loadDeviceContext();
+});
+
+/* ── 视图切换 ── */
+function onViewModeChange() {
+  const mode = $('viewMode').value;
+  $('dateSelect').style.display = mode === 'date' ? '' : 'none';
+  if (mode === 'recent') {
+    loadRecent();
+  } else {
+    loadDates();
+  }
+}
+
+/* ── 设备筛选 ── */
+function setDeviceFilter(f) {
+  deviceFilter = f;
+  ['All','PC','Phone'].forEach(k => {
+    $('filter' + k).classList.toggle('active-filter', k.toLowerCase() === f);
+  });
+  renderEntries();
+}
+
+/* ── 加载最近 N 小时 ── */
+async function loadRecent() {
+  try {
+    const data = await api('GET', '/api/activity/recent');
+    allEntries = data.entries || [];
+    logsLoaded = true;
+    renderEntries();
+    scrollElementToBottom($('logList'));
+  } catch(e) {
+    $('logList').innerHTML = '<div class="log-empty">加载失败</div>';
+  }
+}
+
+/* ── 加载日期列表 ── */
+async function loadDates() {
+  try {
+    const data = await api('GET', '/api/activity/dates');
+    const sel = $('dateSelect');
+    if (!data.dates || data.dates.length === 0) {
+      sel.innerHTML = '<option>暂无日志</option>';
+      $('logList').innerHTML = '<div class="log-empty">暂无活动记录</div>';
+      return;
+    }
+    sel.innerHTML = data.dates.map(d => `<option value="${d}">${d}</option>`).join('');
+    await loadByDate();
+  } catch(e) {
+    $('logList').innerHTML = '<div class="log-empty">加载失败</div>';
+  }
+}
+
+/* ── 加载指定日期 ── */
+async function loadByDate() {
+  const date = $('dateSelect').value;
+  if (!date || date === '暂无日志') return;
+  try {
+    const data = await api('GET', `/api/activity/logs/${date}`);
+    allEntries = data.entries || [];
+    renderEntries();
+    scrollElementToBottom($('logList'));
+  } catch(e) {
+    $('logList').innerHTML = '<div class="log-empty">加载失败</div>';
+  }
+}
+
+/* ── 渲染 ── */
+function renderEntries() {
+  const filtered = deviceFilter === 'all'
+    ? allEntries
+    : allEntries.filter(e => e.device === deviceFilter);
+
+  // 统计
+  const pcCount = allEntries.filter(e => e.device === 'pc').length;
+  const phoneCount = allEntries.filter(e => e.device === 'phone').length;
+  const homeCount = allEntries.filter(e => e.device === 'home').length;
+  $('statsBar').innerHTML = `
+    <span class="stat-item"><span class="stat-dot pc"></span> PC: ${pcCount} 条</span>
+    <span class="stat-item"><span class="stat-dot phone"></span> 手机: ${phoneCount} 条</span>
+    <span class="stat-item">家庭: ${homeCount} 条</span>
+    <span class="stat-item">共 ${allEntries.length} 条</span>
+  `;
+
+  const el = $('logList');
+  if (filtered.length === 0) {
+    el.innerHTML = '<div class="log-empty">暂无活动记录</div>';
+    return;
+  }
+
+  el.innerHTML = filtered.map(e => {
+    const deviceCls = e.device === 'pc' ? 'pc' : (e.device === 'home' ? 'home' : 'phone');
+    const deviceLabel = e.device === 'pc' ? 'PC' : (e.device === 'home' ? '家' : '📱');
+    if (e.device === 'home') {
+      return `<div class="log-entry">
+        <span class="log-device ${deviceCls}">${deviceLabel}</span>
+        <div class="log-body">
+          <span class="log-time">${escHtml(e.time || '')}</span>
+          <span class="log-app">${escHtml(e.title || '家庭传感器动态')}</span>
+          ${e.detail ? `<div class="log-title">${escHtml(e.detail)}</div>` : ''}
+        </div>
+      </div>`;
+    }
+    // PC: 显示窗口标题；手机: 如果 title 是包名就不显示
+    const isPackageName = e.title && e.title.includes('.') && !e.title.includes(' ');
+    const showTitle = e.title && !isPackageName && e.title !== e.app;
+    const titleHtml = showTitle
+      ? `<div class="log-title">${escHtml(e.title)}</div>`
+      : '';
+    // 动作描述
+    const screenLabel = e.device === 'phone'
+      ? ({screen_off: '锁屏 / 熄屏', screen_on: '亮屏'})[e.app]
+      : '';
+    const action = screenLabel ? '' : (e.device === 'phone' ? '打开了' : '正在使用');
+    return `<div class="log-entry">
+      <span class="log-device ${deviceCls}">${deviceLabel}</span>
+      <div class="log-body">
+        <span class="log-time">${escHtml(e.time || '')}</span>
+        <span class="log-action">${action} </span><span class="log-app">${escHtml(screenLabel || e.app || '')}</span>
+        ${titleHtml}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── 刷新 ── */
+function refresh() {
+  loadDeviceContext();
+  if (currentActivityTab === 'timeline') {
+    loadTimeline();
+    return;
+  }
+  if ($('viewMode').value === 'recent') loadRecent();
+  else loadByDate();
+}
+
+/* ── 清除全部日志 ── */
+async function clearAllLogs() {
+  if (!confirm('确定要清除所有活动日志吗？')) return;
+  try {
+    const res = await api('POST', '/api/activity/clear');
+    if (res.ok) {
+      allEntries = [];
+      renderEntries();
+      showToast('已清除 ' + (res.deleted || 0) + ' 个日志文件');
+    } else {
+      showToast('清除失败');
+    }
+  } catch(e) {
+    showToast('清除失败');
+  }
+}
+
+/* ── 摘要弹窗 ── */
+async function openSummary() {
+  $('summaryOverlay').classList.add('show');
+  $('summaryBody').innerHTML = '<div class="summary-empty">加载中...</div>';
+  $('summaryStats').textContent = '';
+  try {
+    const data = await api('GET', '/api/activity/summary');
+    const items = data.summaries || [];
+    if (items.length === 0) {
+      $('summaryBody').innerHTML = '<div class="summary-empty">暂无活动摘要</div>';
+      return;
+    }
+    const totalRaw = items.reduce((s, i) => s + i.count, 0);
+    const activeItems = items.filter(i => i.count > 0);
+    $('summaryBody').innerHTML = items.map(i => {
+      const isIdle = i.count === 0;
+      const countHtml = isIdle ? '' : `<span class="summary-count">${i.count}条→1条</span>`;
+      const textCls = isIdle ? 'summary-text summary-idle' : 'summary-text';
+      return `<div class="summary-item">
+        <span class="summary-time">${escHtml(i.start)}~${escHtml(i.end)}</span>
+        ${countHtml}
+        <div class="${textCls}">${escHtml(i.summary)}</div>
+      </div>`;
+    }).join('');
+    $('summaryStats').textContent = `${totalRaw} 条原始记录 → ${activeItems.length} 条活动摘要 + ${items.length - activeItems.length} 段空闲`;
+    const sb = $('summaryBody'); sb.scrollTop = sb.scrollHeight;
+  } catch(e) {
+    $('summaryBody').innerHTML = '<div class="summary-empty">加载失败</div>';
+  }
+}
+function closeSummary() {
+  $('summaryOverlay').classList.remove('show');
+}
+
+/* ── AI联动总开关 ── */
+async function loadActivityConfig() {
+  try {
+    const data = await api('GET', '/api/activity/config');
+    $('activityTrackingToggle').checked = data.activity_tracking_enabled;
+  } catch(e) {}
+}
+async function loadIdleConfig() {
+  try {
+    idleConfig = await api('GET', '/api/idle-autonomy/config');
+    const minInput = $('idleIntervalMinMinutes');
+    const maxInput = $('idleIntervalMaxMinutes');
+    if (minInput && idleConfig) minInput.value = idleConfig.interval_min_minutes || idleConfig.interval_minutes || 120;
+    if (maxInput && idleConfig) maxInput.value = idleConfig.interval_max_minutes || idleConfig.interval_minutes || 120;
+    const enabled = $('idleEnabledToggle');
+    if (enabled && idleConfig) enabled.checked = !!idleConfig.enabled;
+  } catch(e) {}
+}
+async function saveIdleConfig() {
+  let minMinutes = Math.max(5, parseInt($('idleIntervalMinMinutes')?.value || '120', 10) || 120);
+  let maxMinutes = Math.max(5, parseInt($('idleIntervalMaxMinutes')?.value || String(minMinutes), 10) || minMinutes);
+  if (maxMinutes < minMinutes) [minMinutes, maxMinutes] = [maxMinutes, minMinutes];
+  try {
+    idleConfig = await api('PUT', '/api/idle-autonomy/config', {
+      enabled: !!$('idleEnabledToggle')?.checked,
+      interval_min_minutes: minMinutes,
+      interval_max_minutes: maxMinutes
+    });
+    $('idleIntervalMinMinutes').value = idleConfig.interval_min_minutes || minMinutes;
+    $('idleIntervalMaxMinutes').value = idleConfig.interval_max_minutes || maxMinutes;
+    showToast('AI空闲间隔已保存');
+  } catch(e) {
+    showToast('保存失败');
+  }
+}
+async function saveIdleEnabled(enabled) {
+  const toggle = $('idleEnabledToggle');
+  try {
+    idleConfig = await api('PUT', '/api/idle-autonomy/config', {
+      enabled: !!enabled
+    });
+    if (toggle) toggle.checked = !!idleConfig.enabled;
+    showToast(enabled ? '闲时自主行动已开启' : '闲时自主行动已关闭');
+  } catch(e) {
+    showToast('保存失败');
+    if (toggle) toggle.checked = !enabled;
+  }
+}
+async function runIdleTest() {
+  const btn = $('idleTestBtn');
+  if (btn) {
+    btn.classList.add('running');
+    btn.textContent = '触发中...';
+  }
+  try {
+    const res = await api('POST', '/api/idle-autonomy/run-once');
+    if (res.ok) {
+      showToast('AI空闲互动已触发');
+      timelineLoaded = false;
+      if (currentActivityTab === 'timeline') loadTimeline();
+    } else {
+      showToast(res.error || res.skipped || '触发失败');
+    }
+  } catch(e) {
+    showToast('触发失败');
+  } finally {
+    if (btn) {
+      btn.classList.remove('running');
+      btn.textContent = '测试触发';
+    }
+  }
+}
+async function toggleActivityTracking(enabled) {
+  try {
+    await api('PUT', '/api/activity/config', { activity_tracking_enabled: enabled });
+    showToast(enabled ? 'AI联动已开启' : 'AI联动已关闭');
+  } catch(e) {
+    showToast('设置失败');
+    $('activityTrackingToggle').checked = !enabled;
+  }
+}
+
+/* ── 初始化 ── */
+loadActivityConfig();
+loadDeviceContext();
+syncDeviceContextTimer();
+document.addEventListener('visibilitychange', () => {
+  syncDeviceContextTimer();
+  if (!document.hidden) loadDeviceContext();
+});
+</script>
+</body>
+</html>

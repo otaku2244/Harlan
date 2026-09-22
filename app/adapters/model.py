@@ -4,12 +4,20 @@
   * `stream(...)`  逐块产出文本（给 SSE 转发用）
   * `complete(...)` 收集完整回复（给指令续轮用）
 
-注意 `trust_env`：模型端点在公网时可能需要系统代理，
-与 Serein（Tailscale 内网，强制不走代理）相反，所以分开配置。
+两个实测得来的注意事项：
+
+1. **trust_env**：模型端点在公网时可能需要系统代理，
+   与 Serein（Tailscale 内网，强制不走代理）相反，所以分开配置。
+
+2. **间歇性 502**：走 Serein 网关时实测到同一 payload 时而 200 时而 502，
+   重试即恢复 —— 是上游抖动，不是请求有问题。但如果不重试，
+   用户会看到一条**没有任何解释的空回复**。所以这里必须带退避重试，
+   并且只在"还没吐出任何内容"时重试（吐到一半再重试会产生重复文本）。
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 
@@ -22,6 +30,10 @@ class ModelError(RuntimeError):
     pass
 
 
+# 哪些状态码值得重试：网关/上游抖动，而不是我们的请求有问题
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
 class ModelClient:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or default_settings
@@ -29,6 +41,10 @@ class ModelClient:
     @property
     def enabled(self) -> bool:
         return self.settings.model_enabled
+
+    @property
+    def max_attempts(self) -> int:
+        return max(1, self.settings.model_retries)
 
     def _payload(self, messages: list[dict], stream: bool, **overrides) -> dict:
         payload = {
@@ -67,26 +83,51 @@ class ModelClient:
         }
         timeout = httpx.Timeout(self.settings.model_timeout, connect=15.0)
 
-        async with httpx.AsyncClient(timeout=timeout, trust_env=self.settings.model_trust_env) as client:
-            async with client.stream(
-                "POST", url, headers=headers, json=self._payload(messages, True, **overrides)
-            ) as resp:
-                if resp.status_code >= 400:
-                    body = (await resp.aread()).decode("utf-8", "replace")[:500]
-                    raise ModelError(f"模型返回 HTTP {resp.status_code}: {body}")
-                async for line in resp.aiter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        delta = json.loads(data)["choices"][0].get("delta") or {}
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        continue
-                    piece = delta.get("content")
-                    if piece:
-                        yield piece
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_attempts + 1):
+            emitted = False
+            try:
+                async with httpx.AsyncClient(
+                    timeout=timeout, trust_env=self.settings.model_trust_env
+                ) as client:
+                    async with client.stream(
+                        "POST", url, headers=headers,
+                        json=self._payload(messages, True, **overrides),
+                    ) as resp:
+                        if resp.status_code >= 400:
+                            body = (await resp.aread()).decode("utf-8", "replace")[:400]
+                            if resp.status_code in RETRYABLE_STATUS and attempt < self.max_attempts:
+                                last_error = ModelError(
+                                    f"模型返回 HTTP {resp.status_code}（第 {attempt} 次）: {body}"
+                                )
+                                break       # 跳出 with，走重试
+                            raise ModelError(f"模型返回 HTTP {resp.status_code}: {body}")
+
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data:"):
+                                continue
+                            data = line[5:].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                delta = json.loads(data)["choices"][0].get("delta") or {}
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+                            piece = delta.get("content")
+                            if piece:
+                                emitted = True
+                                yield piece
+                return          # 正常结束
+            except (httpx.RequestError, ModelError) as exc:
+                last_error = exc
+                # 已经吐出内容就不重试 —— 重试会导致前端看到重复文本
+                if emitted or attempt >= self.max_attempts:
+                    raise
+            if attempt < self.max_attempts:
+                await asyncio.sleep(min(2 ** (attempt - 1), 4))
+
+        if last_error is not None:
+            raise ModelError(f"重试 {self.max_attempts} 次仍失败：{last_error}")
 
     async def complete(self, messages: list[dict], **overrides) -> str:
         """收集完整回复。指令续轮用它。"""

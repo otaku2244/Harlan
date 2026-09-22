@@ -1,0 +1,27 @@
+[data-pat-target] { cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+[data-pat-target]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.pat-dialog { margin: auto; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 22px; overflow-y: auto; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); box-shadow: 0 20px 70px #0005; font: inherit; }
+.pat-dialog::backdrop { background: #05092388; }
+.pat-form { display: flex; flex-direction: column; gap: 12px; }
+.pat-heading { display: flex; align-items: center; justify-content: space-between; }
+.pat-heading h3 { margin: 0; font-size: 19px; }
+.pat-form button { font: inherit; cursor: pointer; border: 0; }
+.pat-close { padding: 2px 8px; background: transparent; color: var(--text2); font-size: 24px !important; }
+.pat-hint { margin: 0; color: var(--text2); font-size: 13px; }
+.pat-action-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px; font-size: 14px; overflow-wrap: anywhere; }
+.pat-action-line input { width: 100px; min-width: 0; text-align: center; }
+.pat-form input, .pat-form textarea { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); background: var(--surface2); font: inherit; font-size: 16px; }
+.pat-form textarea { width: 100%; resize: vertical; min-height: 90px; line-height: 1.65; }
+.pat-form input:focus, .pat-form textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pat-suffix-label { color: var(--text2); font-size: 13px; }
+.pat-preview { padding: 12px; background: var(--surface2); border-radius: 10px; color: var(--text2); font-size: 13px; text-align: center; line-height: 1.8; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pat-error { margin: 0; color: var(--danger, #e35b65); font-size: 13px; }
+.pat-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 2px; }
+.pat-buttons button { padding: 10px 20px; border-radius: 10px; font-size: 14px; }
+.pat-cancel { color: var(--text2); background: var(--surface2); }
+.pat-send { color: #fff; background: var(--accent); }
+.pat-send:disabled { opacity: .5; cursor: default; }
+.pat-notice .pat-text { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; font-size: 12px; }
+.pat-notice .system-notice-marker { display: none; }
+.private-message-flow > .msg-row.system,
+.message-text-flow > .system-event-msg { width: 100%; max-width: 100%; margin: 0; }

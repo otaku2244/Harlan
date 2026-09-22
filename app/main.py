@@ -54,6 +54,8 @@ class AppState:
         self.model: ModelClient | None = None
         self.pipeline: ChatPipeline | None = None
         self.scheduler: WakeScheduler | None = None
+        # 兼容层用它广播（前端按 AionsHome 的 msg_created 事件名收消息）
+        self.multi = manager
 
     @property
     def ready(self) -> bool:
@@ -103,6 +105,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Aion / Harlan", version="0.1.0", lifespan=lifespan)
+
+# AionsHome 兼容适配层：移植来的前端调的是它的 API 形状（31 个端点）。
+# 放在 /api 下，与下面的原生路由不冲突（路径不重叠）。
+from app import routes_compat  # noqa: E402
+
+routes_compat.bind(state)
+app.include_router(routes_compat.router)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -384,13 +393,59 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str | None = None)
 
 
 # ─────────────────────────────────────────────────────────────
-# 静态前端（移植后放在 app/static/）
+# 静态前端
 # ─────────────────────────────────────────────────────────────
+#
+# 移植过来的前端用**绝对路径**引用资源，所以下面这几个挂载点是硬需求，
+# 不是可选优化：
+#     /static/xxx        ← <script src="/static/chat.js">
+#     /public/xxx        ← <img src="/public/AIIcon.png">
+#     /manifest.json     ← PWA 清单（从根路径提供，作用域才覆盖全站）
+#
+# app/static/ 这一层目录是"网页根"，但 URL 前缀不是 —— 别把它们搞成同一个挂载点。
 
 STATIC_DIR = BASE_DIR / "app" / "static"
+
 if STATIC_DIR.is_dir():
+    # /static/* → app/static/*
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    # /public/* → app/static/public/*
+    _public = STATIC_DIR / "public"
+    if _public.is_dir():
+        app.mount("/public", StaticFiles(directory=str(_public)), name="public")
+
+    def _page(name: str) -> FileResponse:
+        return FileResponse(str(STATIC_DIR / name))
 
     @app.get("/")
     async def index() -> FileResponse:
-        return FileResponse(str(STATIC_DIR / "home.html"))
+        """主页：手机风格的应用网格。"""
+        home = STATIC_DIR / "home.html"
+        return FileResponse(str(home if home.exists() else STATIC_DIR / "chat.html"))
+
+    @app.get("/manifest.json")
+    async def pwa_manifest() -> FileResponse:
+        # 必须从根路径提供，Service Worker / PWA 作用域才覆盖全站
+        return _page("manifest.json")
+
+    @app.get("/sw.js")
+    async def service_worker() -> FileResponse:
+        return _page("sw.js")
+
+    # 各功能页：/chat → chat.html，/settings → settings.html …
+    PAGE_ROUTES = [
+        "chat", "home", "settings", "worldbook", "memory", "diary", "moments",
+        "schedule", "location", "monitor-logs", "camera", "activity-logs",
+    ]
+    for _name in PAGE_ROUTES:
+        _file = STATIC_DIR / f"{_name}.html"
+        if not _file.exists():
+            continue
+
+        def _make(target: Path):
+            async def _route() -> FileResponse:
+                return FileResponse(str(target))
+            return _route
+
+        app.get(f"/{_name}", name=f"page_{_name.replace('-', '_')}")(_make(_file))

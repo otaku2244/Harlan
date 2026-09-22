@@ -1,0 +1,29 @@
+.chat-font-size-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text2);
+  font-size: 13px;
+}
+.chat-font-size-control > span { flex: 1; }
+.chat-font-size-control button {
+  flex: 0 0 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.chat-font-size-control button:disabled { opacity: .35; cursor: default; }
+.chat-font-size-control button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-font-size-control output { min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
+#messages .msg-bubble { font-size: var(--chat-font-size, 13.5px); }
+#messages .inner-monologue-line { font-size: calc(var(--chat-font-size, 13.5px) * .89); }

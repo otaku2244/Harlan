@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>监控日志</title>
+<link rel="stylesheet" href="/static/common.css">
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ff8359">
+<style>
+.log-date-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.log-date-row select { flex:1; background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px; outline:none; }
+.log-date-row button { background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
+.log-list { flex:1; overflow-y:auto; max-height:calc(100dvh - 260px); border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:4px; }
+.log-entry { padding:6px 10px; border-bottom:1px solid var(--border); font-size:13px; line-height:1.5; }
+.log-entry:last-child { border-bottom:none; }
+.log-time { color:var(--text2); font-size:11px; font-family:monospace; margin-right:6px; }
+.log-text { color:var(--text); }
+.log-core { color:#e65100; font-style:italic; }
+.log-dispatch { color:#e65100; font-size:11px; margin-top:2px; }
+.log-dispatch-reason { color:#e65100; font-size:11px; margin-top:2px; }
+.log-debug-details { margin-top:4px; color:var(--text2); }
+.log-debug-details summary { width:max-content; cursor:pointer; user-select:none; font-size:11px; color:var(--text2); }
+.log-debug-details[open] summary { margin-bottom:2px; }
+.log-debug { color:var(--text2); font-size:11px; margin-top:2px; white-space:pre-wrap; }
+.log-debug b { color:var(--text); font-weight:600; }
+.log-empty { padding:24px; text-align:center; color:var(--text3); font-size:14px; }
+.chat-status-bar { padding:8px 12px; border-top:1px solid var(--border); margin-top:8px; display:flex; flex-direction:column; gap:4px; font-size:12px; }
+.chat-status-label { color:var(--text2); white-space:nowrap; }
+.chat-status-text { color:#1a73e8; word-break:break-all; white-space:pre-wrap; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="sub-page">
+  <div class="top-bar">
+    <button class="back-btn" onclick="location.href='/'">⬅</button>
+    <h2>📜 监控日志</h2>
+  </div>
+  <div class="page-content">
+    <div class="log-date-row">
+      <select id="logDateSelect" onchange="loadLogDate()"></select>
+      <button onclick="loadLogDates()">🔄</button>
+    </div>
+    <div class="log-list" id="logList"><div class="log-empty">暂无日志</div></div>
+    <div class="chat-status-bar">
+      <span class="chat-status-label">📍 位置/天气摘要：</span>
+      <span class="chat-status-text" id="chatStatusText">暂无</span>
+    </div>
+    <div class="chat-status-bar" style="border-top:none;margin-top:0;padding-top:0">
+      <span class="chat-status-label">📍 缓存定位：</span>
+      <span class="chat-status-text" id="locDebugText" style="color:#43a047">暂无</span>
+    </div>
+  </div>
+</div>
+<script src="/static/theme.js?v=theme-20260606"></script>
+<script src="/static/common.js"></script>
+<script>
+let wakeTargetNames = { aion: "主 AI", connor: "第二 AI" };
+
+connectCommonWS(msg => {
+  if (msg.type === "chat_status") {
+    $("chatStatusText").textContent = msg.data.status || "暂无";
+  } else if (msg.type === "location_update" && msg.data) {
+    updateLocDebug(msg.data);
+  } else if (msg.type === "monitor_log") {
+    const today = new Date().toISOString().slice(0, 10);
+    if ($("logDateSelect").value === today) {
+      const e = msg.data;
+      const el = $("logList");
+      if (el.querySelector(".log-empty")) el.innerHTML = "";
+      el.insertAdjacentHTML("beforeend", renderMonitorEntry(e));
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+});
+
+(async function init() {
+  await loadWakeTargetNames();
+  await loadLogDates();
+  loadChatStatus();
+})();
+
+async function loadWakeTargetNames() {
+  try {
+    const status = await api("GET", "/api/cam/status");
+    wakeTargetNames = {
+      aion: (status.ai_name || "").trim() || "主 AI",
+      connor: (status.connor_name || "").trim() || "第二 AI"
+    };
+  } catch (e) {}
+}
+
+async function loadChatStatus() {
+  try { const data = await api("GET", "/api/chat_status"); $("chatStatusText").textContent = data.status || "暂无"; } catch(e){}
+  try { const s = await api("GET", "/api/location/status"); updateLocDebug(s); } catch(e){}
+}
+
+function updateLocDebug(s) {
+  if (!s || !s.lng) { $("locDebugText").textContent = "暂无"; return; }
+  const stateMap = {at_home:"🏠在家", outside:"🚶外出", unknown:"❓未知"};
+  let t = stateMap[s.state] || s.state;
+  if (s.address) t += ` | ${s.address}`;
+  if (s.distance_from_home > 0) { const d = s.distance_from_home; t += ` | 距家${d>=1000?(d/1000).toFixed(1)+'km':Math.round(d)+'m'}`; }
+  t += `\n坐标: ${s.lng}, ${s.lat}`;
+  if (s.accuracy) t += ` (±${Math.round(s.accuracy)}m)`;
+  if (s.updated_at) t += ` | 更新: ${new Date(s.updated_at * 1000).toLocaleTimeString()}`;
+  if (s.weather && s.weather.weather) t += ` | ${s.weather.weather} ${s.weather.temperature}°C`;
+  $("locDebugText").textContent = t;
+}
+
+async function loadLogDates() {
+  try {
+    const data = await api("GET", "/api/cam/logs");
+    const sel = $("logDateSelect");
+    if (data.dates.length === 0) { sel.innerHTML = '<option>暂无日志</option>'; $("logList").innerHTML = '<div class="log-empty">暂无监控日志</div>'; return; }
+    sel.innerHTML = data.dates.map(d => `<option value="${d}">${d}</option>`).join("");
+    await loadLogDate();
+  } catch(e) { $("logList").innerHTML = '<div class="log-empty">加载失败</div>'; }
+}
+
+async function loadLogDate() {
+  const date = $("logDateSelect").value;
+  if (!date || date === "暂无日志") return;
+  try {
+    const data = await api("GET", `/api/cam/logs/${date}`);
+    const entries = data.entries;
+    const el = $("logList");
+    if (!entries || entries.length === 0) { el.innerHTML = '<div class="log-empty">该日暂无日志</div>'; return; }
+    el.innerHTML = entries.map(renderMonitorEntry).join("");
+    el.scrollTop = el.scrollHeight;
+  } catch(e) { $("logList").innerHTML = '<div class="log-empty">加载失败</div>'; }
+}
+
+function renderMonitorEntry(e) {
+  const isCore = e.monitoringlog && e.monitoringlog.startsWith("🧠");
+  const cls = isCore ? "log-core" : "log-text";
+  const callTag = e.call_core ? ' <span style="color:#d32f2f;font-size:11px">[唤醒Core]</span>' : '';
+  const summaryTag = e.summary ? `<div style="color:#1a73e8;font-size:11px;margin-top:2px">📋 概况: ${escHtml(e.summary)}</div>` : '';
+  const reasonTag = e.core_reason ? `<div style="color:#e65100;font-size:11px;margin-top:2px">⚡ 唤醒原因: ${escHtml(e.core_reason)}</div>` : '';
+  const wakeTargets = Array.isArray(e.final_wake_targets) ? e.final_wake_targets : [];
+  const wakeNames = wakeTargets.map(target => wakeTargetNames[target] || target).filter(Boolean);
+  const dispatchTargetTag = e.call_core && wakeNames.length
+    ? `<div class="log-dispatch">🎯 唤醒对象: ${escHtml(wakeNames.join("、"))}</div>`
+    : '';
+  const dispatchReasonTag = e.call_core && e.wake_reason
+    ? `<div class="log-dispatch-reason">💡 唤醒理由: ${escHtml(e.wake_reason)}</div>`
+    : '';
+  const debugParts = [];
+  if (e.camera_observation) debugParts.push(`<b>视野</b>: ${escHtml(e.camera_observation)}`);
+  if (e.device_activity) debugParts.push(`<b>设备</b>: ${escHtml(e.device_activity)}`);
+  if (e.inference) debugParts.push(`<b>判断</b>: ${escHtml(e.inference)}`);
+  if (e.confidence) debugParts.push(`<b>置信</b>: ${escHtml(e.confidence)}`);
+  const debugTag = debugParts.length
+    ? `<details class="log-debug-details"><summary>🔍 客观信息</summary><div class="log-debug">${debugParts.join("\n")}</div></details>`
+    : '';
+  return `<div class="log-entry"><span class="log-time">${escHtml(e.time || '')}</span><span class="${cls}">${escHtml(e.monitoringlog || '')}</span>${callTag}${summaryTag}${reasonTag}${dispatchTargetTag}${dispatchReasonTag}${debugTag}</div>`;
+}
+</script>
+</body>
+</html>

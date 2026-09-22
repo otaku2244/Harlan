@@ -50,6 +50,8 @@ class Settings:
         # 模型端点在公网时可能需要系统代理；Serein 在 Tailscale 内网，永远不走代理
         self.model_trust_env = _bool("MODEL_TRUST_ENV", True)
         self.model_timeout = _int("MODEL_TIMEOUT", 120)
+        # 间歇性 502/429 的退避重试次数。走 Serein 网关时实测会遇到。
+        self.model_retries = _int("MODEL_RETRIES", 3)
 
         # ── 对话行为 ────────────────────────────────
         # 指令续轮的最大次数，防止模型反复吐指令导致死循环

@@ -1,0 +1,410 @@
+{
+  "source": "https://github.com/death34018-hue/AionsHome/tree/main/aion-chat/static",
+  "imported_at": "2026-09-22 23:07:47",
+  "files": {
+    "activity-logs.html": {
+      "bytes": 37621,
+      "remote": "aion-chat/static/activity-logs.html",
+      "used_by": []
+    },
+    "ai-message-editor.css": {
+      "bytes": 1275,
+      "remote": "aion-chat/static/ai-message-editor.css",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "ai-message-editor.js": {
+      "bytes": 2564,
+      "remote": "aion-chat/static/ai-message-editor.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "camera.html": {
+      "bytes": 37970,
+      "remote": "aion-chat/static/camera.html",
+      "used_by": []
+    },
+    "chat-font-size.css": {
+      "bytes": 983,
+      "remote": "aion-chat/static/chat-font-size.css",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "chat-font-size.js": {
+      "bytes": 1773,
+      "remote": "aion-chat/static/chat-font-size.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "chat-image-album.js": {
+      "bytes": 1481,
+      "remote": "aion-chat/static/chat-image-album.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "chat.css": {
+      "bytes": 119151,
+      "remote": "aion-chat/static/chat.css",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "chat.html": {
+      "bytes": 20005,
+      "remote": "aion-chat/static/chat.html",
+      "used_by": []
+    },
+    "chat.js": {
+      "bytes": 243836,
+      "remote": "aion-chat/static/chat.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "common.css": {
+      "bytes": 9304,
+      "remote": "aion-chat/static/common.css",
+      "used_by": [
+        "settings.html",
+        "worldbook.html",
+        "memory.html",
+        "diary.html",
+        "moments.html",
+        "schedule.html",
+        "location.html",
+        "monitor-logs.html",
+        "camera.html",
+        "activity-logs.html"
+      ]
+    },
+    "common.js": {
+      "bytes": 20682,
+      "remote": "aion-chat/static/common.js",
+      "used_by": [
+        "settings.html",
+        "worldbook.html",
+        "memory.html",
+        "diary.html",
+        "moments.html",
+        "schedule.html",
+        "location.html",
+        "monitor-logs.html",
+        "camera.html",
+        "activity-logs.html"
+      ]
+    },
+    "content-markdown.css": {
+      "bytes": 1491,
+      "remote": "aion-chat/static/content-markdown.css",
+      "used_by": [
+        "diary.html",
+        "moments.html"
+      ]
+    },
+    "diary.html": {
+      "bytes": 24567,
+      "remote": "aion-chat/static/diary.html",
+      "used_by": []
+    },
+    "generation-control.js": {
+      "bytes": 4367,
+      "remote": "aion-chat/static/generation-control.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "home.html": {
+      "bytes": 44118,
+      "remote": "aion-chat/static/home.html",
+      "used_by": []
+    },
+    "location.html": {
+      "bytes": 16401,
+      "remote": "aion-chat/static/location.html",
+      "used_by": []
+    },
+    "manifest.json": {
+      "bytes": 619,
+      "remote": "aion-chat/static/manifest.json",
+      "used_by": [
+        "chat.html",
+        "home.html",
+        "settings.html",
+        "worldbook.html",
+        "memory.html",
+        "diary.html",
+        "moments.html",
+        "schedule.html",
+        "location.html",
+        "monitor-logs.html",
+        "camera.html",
+        "activity-logs.html"
+      ]
+    },
+    "memory-editor.css": {
+      "bytes": 4362,
+      "remote": "aion-chat/static/memory-editor.css",
+      "used_by": [
+        "memory.html"
+      ]
+    },
+    "memory-editor.js": {
+      "bytes": 7261,
+      "remote": "aion-chat/static/memory-editor.js",
+      "used_by": [
+        "memory.html"
+      ]
+    },
+    "memory.html": {
+      "bytes": 55405,
+      "remote": "aion-chat/static/memory.html",
+      "used_by": []
+    },
+    "message-row-focus.js": {
+      "bytes": 481,
+      "remote": "aion-chat/static/message-row-focus.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "moments.html": {
+      "bytes": 32622,
+      "remote": "aion-chat/static/moments.html",
+      "used_by": []
+    },
+    "monitor-camera-snapshot.js": {
+      "bytes": 1633,
+      "remote": "aion-chat/static/monitor-camera-snapshot.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "monitor-logs.html": {
+      "bytes": 8238,
+      "remote": "aion-chat/static/monitor-logs.html",
+      "used_by": []
+    },
+    "native-tts-audio.js": {
+      "bytes": 6726,
+      "remote": "aion-chat/static/native-tts-audio.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "pat.css": {
+      "bytes": 2581,
+      "remote": "aion-chat/static/pat.css",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "pat.js": {
+      "bytes": 9477,
+      "remote": "aion-chat/static/pat.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "phone-camera-preview-policy.js": {
+      "bytes": 1938,
+      "remote": "aion-chat/static/phone-camera-preview-policy.js",
+      "used_by": [
+        "camera.html"
+      ]
+    },
+    "proactive-orbit.css": {
+      "bytes": 3092,
+      "remote": "aion-chat/static/proactive-orbit.css",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "proactive-orbit.js": {
+      "bytes": 583,
+      "remote": "aion-chat/static/proactive-orbit.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "schedule-ui.js": {
+      "bytes": 7443,
+      "remote": "aion-chat/static/schedule-ui.js",
+      "used_by": [
+        "schedule.html"
+      ]
+    },
+    "schedule.html": {
+      "bytes": 21258,
+      "remote": "aion-chat/static/schedule.html",
+      "used_by": []
+    },
+    "settings.html": {
+      "bytes": 50914,
+      "remote": "aion-chat/static/settings.html",
+      "used_by": []
+    },
+    "system-notice-ui.js": {
+      "bytes": 4027,
+      "remote": "aion-chat/static/system-notice-ui.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "theme.js": {
+      "bytes": 2119,
+      "remote": "aion-chat/static/theme.js",
+      "used_by": [
+        "settings.html",
+        "worldbook.html",
+        "memory.html",
+        "diary.html",
+        "moments.html",
+        "schedule.html",
+        "location.html",
+        "monitor-logs.html",
+        "camera.html",
+        "activity-logs.html"
+      ]
+    },
+    "tts-loudness-settings.js": {
+      "bytes": 1883,
+      "remote": "aion-chat/static/tts-loudness-settings.js",
+      "used_by": [
+        "settings.html"
+      ]
+    },
+    "tts-voices.js": {
+      "bytes": 1881,
+      "remote": "aion-chat/static/tts-voices.js",
+      "used_by": [
+        "chat.html"
+      ]
+    },
+    "vendor/markdown-it-15.0.1.min.js": {
+      "bytes": 114836,
+      "remote": "aion-chat/static/vendor/markdown-it-15.0.1.min.js",
+      "used_by": [
+        "chat.html",
+        "diary.html",
+        "moments.html"
+      ]
+    },
+    "worldbook.html": {
+      "bytes": 42441,
+      "remote": "aion-chat/static/worldbook.html",
+      "used_by": []
+    }
+  },
+  "gap_filled": [
+    {
+      "ref": "/public/AIIcon.png",
+      "remote": "public/AIIcon.png"
+    },
+    {
+      "ref": "/public/AIonResponse.mp3",
+      "remote": "public/AIonResponse.mp3"
+    },
+    {
+      "ref": "/public/AionMonitoralart.mp3",
+      "remote": "public/AionMonitoralart.mp3"
+    },
+    {
+      "ref": "/public/UserIcon.png",
+      "remote": "public/UserIcon.png"
+    },
+    {
+      "ref": "/public/icon-192.png",
+      "remote": "public/icon-192.png"
+    },
+    {
+      "ref": "/public/发送消息.mp3",
+      "remote": "public/发送消息.mp3"
+    },
+    {
+      "ref": "/public/小组件/录音.png",
+      "remote": "public/小组件/录音.png"
+    },
+    {
+      "ref": "/public/打开礼物.mp3",
+      "remote": "public/打开礼物.mp3"
+    },
+    {
+      "ref": "/public/收到消息.mp3",
+      "remote": "public/收到消息.mp3"
+    },
+    {
+      "ref": "/static/security-alert.js",
+      "remote": "aion-chat/static/security-alert.js"
+    },
+    {
+      "ref": "/static/theme.css",
+      "remote": "aion-chat/static/theme.css"
+    },
+    {
+      "ref": "/static/video-call.js",
+      "remote": "aion-chat/static/video-call.js"
+    },
+    {
+      "ref": "/public/ringbell.mp3",
+      "remote": "public/ringbell.mp3"
+    },
+    {
+      "ref": "/public/strangealert.mp3",
+      "remote": "public/strangealert.mp3"
+    },
+    {
+      "ref": "/public/发送消息.mp3",
+      "remote": "public/发送消息.mp3"
+    },
+    {
+      "ref": "/public/小组件/录音.png",
+      "remote": "public/小组件/录音.png"
+    },
+    {
+      "ref": "/public/打开礼物.mp3",
+      "remote": "public/打开礼物.mp3"
+    },
+    {
+      "ref": "/public/挂断.png",
+      "remote": "public/挂断.png"
+    },
+    {
+      "ref": "/public/挂断音.mp3",
+      "remote": "public/挂断音.mp3"
+    },
+    {
+      "ref": "/public/接听.png",
+      "remote": "public/接听.png"
+    },
+    {
+      "ref": "/public/接电话1.mp3",
+      "remote": "public/接电话1.mp3"
+    },
+    {
+      "ref": "/public/接电话2.mp3",
+      "remote": "public/接电话2.mp3"
+    },
+    {
+      "ref": "/public/收到消息.mp3",
+      "remote": "public/收到消息.mp3"
+    },
+    {
+      "ref": "/public/视频来电头像.jpg",
+      "remote": "public/视频来电头像.jpg"
+    },
+    {
+      "ref": "/public/视频背景照片.jpg",
+      "remote": "public/视频背景照片.jpg"
+    },
+    {
+      "ref": "/public/视频通话背景.jpg",
+      "remote": "public/视频通话背景.jpg"
+    }
+  ],
+  "unavailable": []
+}

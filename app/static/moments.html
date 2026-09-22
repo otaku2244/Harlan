@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>朋友圈 - Aion</title>
+<link rel="stylesheet" href="/static/common.css">
+<link rel="stylesheet" href="/static/content-markdown.css?v=compact-spacing-20260904">
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ff8359">
+<style>
+/* ── 整体布局 ── */
+.moments-list { flex:1; overflow-y:auto; max-height:calc(100dvh - 60px); padding:4px 0; scrollbar-width:none; }
+.moments-list::-webkit-scrollbar { display:none; }
+.moments-empty { padding:48px 16px; text-align:center; color:var(--text3); font-size:14px; line-height:1.8; }
+
+/* ── 发布按钮 ── */
+.publish-fab {
+  position:absolute; right:12px; top:50%; transform:translateY(-50%);
+  width:30px; height:30px; border:none; border-radius:50%;
+  background:var(--accent); color:#fff; font-size:20px; line-height:30px;
+  text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.publish-fab:active { opacity:0.8; }
+
+/* ── 发布弹窗 ── */
+.publish-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.45);
+  z-index:200; display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity 0.2s;
+}
+.publish-overlay.show { opacity:1; pointer-events:auto; }
+.publish-modal {
+  background:var(--surface); border-radius:14px; width:min(90vw, 380px);
+  padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.25);
+  transform:translateY(20px); transition:transform 0.2s;
+}
+.publish-overlay.show .publish-modal { transform:translateY(0); }
+.publish-modal-title {
+  font-size:16px; font-weight:600; color:var(--text); margin-bottom:12px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.publish-modal-close {
+  background:none; border:none; font-size:18px; color:var(--text3);
+  cursor:pointer; padding:2px 6px;
+}
+.publish-modal-close:hover { color:var(--text); }
+.publish-textarea {
+  width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:10px;
+  padding:10px 14px; font-size:14px; resize:none; min-height:100px; max-height:200px;
+  background:var(--bg); color:var(--text); outline:none;
+  font-family:inherit; line-height:1.6;
+}
+.publish-textarea:focus { border-color:var(--accent); }
+.publish-modal-btn {
+  display:block; width:100%; margin-top:12px; padding:10px 0;
+  border:none; border-radius:10px; background:var(--accent); color:#fff;
+  font-size:15px; font-weight:500; cursor:pointer;
+}
+.publish-modal-btn:active { opacity:0.8; }
+.publish-modal-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.publish-tools {
+  display:flex; align-items:center; gap:8px; margin-top:10px;
+}
+.publish-image-btn {
+  border:1px solid var(--border); background:var(--surface2); color:var(--text2);
+  border-radius:8px; padding:7px 10px; font-size:13px; cursor:pointer;
+}
+.publish-image-btn:active { opacity:0.82; }
+.publish-preview {
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-top:8px;
+}
+.publish-preview-item {
+  position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; background:var(--bg);
+  border:1px solid var(--border);
+}
+.publish-preview-item img { width:100%; height:100%; object-fit:cover; display:block; }
+.publish-preview-remove {
+  position:absolute; top:4px; right:4px; width:20px; height:20px; border:none;
+  border-radius:50%; background:rgba(0,0,0,0.55); color:#fff; font-size:13px;
+  line-height:20px; cursor:pointer;
+}
+
+/* ── 朋友圈卡片 ── */
+.moment-card {
+  position:relative;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:14px 16px 10px;
+}
+.moment-header {
+  display:flex; align-items:center; gap:10px; margin-bottom:8px;
+}
+.moment-avatar {
+  width:40px; height:40px; border-radius:50%; object-fit:cover;
+  background:var(--border);
+}
+.moment-meta { flex:1; }
+.moment-author {
+  font-size:15px; font-weight:600; color:var(--accent);
+}
+.moment-time {
+  font-size:11px; color:var(--text3); margin-top:2px;
+}
+.moment-content {
+  font-size:14px; color:var(--text); line-height:1.6;
+  white-space:pre-wrap; word-break:break-word;
+  margin-bottom:8px;
+}
+.moment-images {
+  display:grid; grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:6px; margin:6px 0 8px; max-width:320px;
+}
+.moment-images img {
+  width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px;
+  background:var(--bg); cursor:pointer; display:block;
+}
+.moment-images.one { grid-template-columns:minmax(0, 220px); max-width:220px; }
+.moment-images.one img { aspect-ratio:auto; max-height:260px; object-fit:contain; }
+.moment-del {
+  position:absolute; top:2px; right:10px;
+  background:none; border:none; color:var(--text3);
+  font-size:13px; cursor:pointer; padding:4px 6px;
+  border-radius:4px; opacity:0; transition:opacity 0.2s; z-index:2;
+}
+.moment-card:hover .moment-del { opacity:1; }
+.moment-del:hover { color:var(--danger); }
+
+/* ── 互动区（放在 header 行右侧） ── */
+.moment-actions {
+  display:flex; gap:10px; align-items:center;
+  margin-left:auto;
+}
+.moment-action {
+  display:flex; align-items:center; gap:2px;
+  background:none; border:none; color:var(--text3);
+  font-size:12px; cursor:pointer; padding:2px 0;
+}
+.moment-action:hover { color:var(--text); }
+.moment-action.active-like { color:#ff6b6b; }
+.moment-action.active-dislike { color:#868e96; }
+.reaction-names {
+  font-size:12px; color:var(--text3); padding:2px 0;
+}
+.reaction-names span { margin-right:6px; }
+
+/* ── 评论区 ── */
+.comments-section {
+  background:var(--bg); border-radius:6px;
+  padding:6px 10px; margin-top:6px;
+}
+.comment-item {
+  font-size:13px; line-height:1.5; padding:3px 0;
+  color:var(--text); cursor:pointer; user-select:none; -webkit-user-select:none;
+  -webkit-touch-callout:none;
+}
+.comment-item:active { background:var(--surface2); }
+.comment-text { word-break:break-word; }
+.comment-author {
+  color:var(--accent); font-weight:500; cursor:pointer;
+}
+.comment-reply-tag { color:var(--text3); }
+
+/* ── 评论弹窗 ── */
+.comment-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.45);
+  z-index:200; display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity 0.2s;
+}
+.comment-overlay.show { opacity:1; pointer-events:auto; }
+.comment-modal {
+  background:var(--surface); border-radius:14px; width:min(90vw, 380px);
+  padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.25);
+  transform:translateY(20px); transition:transform 0.2s;
+}
+.comment-overlay.show .comment-modal { transform:translateY(0); }
+.comment-modal-title {
+  font-size:16px; font-weight:600; color:var(--text); margin-bottom:12px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.comment-modal-close {
+  background:none; border:none; font-size:18px; color:var(--text3);
+  cursor:pointer; padding:2px 6px;
+}
+.comment-modal-close:hover { color:var(--text); }
+.comment-modal-input {
+  width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:10px;
+  padding:10px 14px; font-size:14px; resize:none; min-height:80px; max-height:160px;
+  background:var(--bg); color:var(--text); outline:none;
+  font-family:inherit; line-height:1.6;
+}
+.comment-modal-input:focus { border-color:var(--accent); }
+.comment-modal-btn {
+  display:block; width:100%; margin-top:12px; padding:10px 0;
+  border:none; border-radius:10px; background:var(--accent); color:#fff;
+  font-size:15px; font-weight:500; cursor:pointer;
+}
+.comment-modal-btn:active { opacity:0.8; }
+.comment-modal-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+/* ── 评论长按菜单 ── */
+.comment-action-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.32);
+  z-index:210; display:flex; align-items:flex-end; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity 0.18s;
+}
+.comment-action-overlay.show { opacity:1; pointer-events:auto; }
+.comment-action-menu {
+  width:100%; max-width:420px; background:var(--surface);
+  border-radius:14px 14px 0 0; padding:8px 12px 18px;
+  box-shadow:0 -8px 28px rgba(0,0,0,0.18);
+  transform:translateY(20px); transition:transform 0.18s;
+}
+.comment-action-overlay.show .comment-action-menu { transform:translateY(0); }
+.comment-action-title {
+  font-size:12px; color:var(--text3); text-align:center;
+  padding:8px 0 10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.comment-action-btn {
+  width:100%; border:none; background:var(--bg); color:var(--text);
+  padding:12px 0; font-size:15px; cursor:pointer; border-radius:8px;
+  margin-top:8px;
+}
+.comment-action-btn:active { opacity:0.82; }
+.comment-action-btn.danger { color:var(--danger); }
+.comment-action-btn.cancel { color:var(--text3); }
+
+/* ── 加载更多 ── */
+.load-more-btn {
+  display:block; margin:16px auto; padding:8px 24px;
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:8px; color:var(--text2); font-size:13px; cursor:pointer;
+}
+.load-more-btn:hover { background:var(--border); }
+.moments-stats { text-align:center; font-size:12px; color:var(--text3); padding:8px 0; }
+</style>
+</head>
+<body>
+<div class="sub-page">
+  <div class="top-bar" style="position:relative">
+    <button class="back-btn" onclick="location.href='/'">⬅</button>
+    <h2>📱 朋友圈</h2>
+    <button class="publish-fab" onclick="openPublishModal()" title="发朋友圈">＋</button>
+  </div>
+  <!-- 发布弹窗 -->
+  <div class="publish-overlay" id="publishOverlay" onclick="if(event.target===this)closePublishModal()">
+    <div class="publish-modal">
+      <div class="publish-modal-title">
+        <span>发朋友圈</span>
+        <button class="publish-modal-close" onclick="closePublishModal()">✕</button>
+      </div>
+      <textarea class="publish-textarea" id="publishInput" placeholder="分享你的想法..."></textarea>
+      <div class="publish-tools">
+        <button class="publish-image-btn" type="button" onclick="document.getElementById('publishFileInput').click()">配图</button>
+        <span id="publishImageStatus" style="font-size:12px;color:var(--text3)"></span>
+      </div>
+      <input type="file" id="publishFileInput" accept="image/*" multiple style="display:none" onchange="handlePublishImages(this)">
+      <div class="publish-preview" id="publishPreview"></div>
+      <button class="publish-modal-btn" id="publishBtn" onclick="publishMoment()">发布</button>
+    </div>
+  </div>
+  <!-- 评论弹窗 -->
+  <div class="comment-overlay" id="commentOverlay" onclick="if(event.target===this)closeCommentModal()">
+    <div class="comment-modal">
+      <div class="comment-modal-title">
+        <span id="commentModalTitle">写评论</span>
+        <button class="comment-modal-close" onclick="closeCommentModal()">✕</button>
+      </div>
+      <textarea class="comment-modal-input" id="commentModalInput" placeholder="写下你的评论..."></textarea>
+      <button class="comment-modal-btn" id="commentModalBtn" onclick="submitComment()">发送</button>
+    </div>
+  </div>
+  <!-- 评论长按菜单 -->
+  <div class="comment-action-overlay" id="commentActionOverlay" onclick="if(event.target===this)closeCommentActionMenu()">
+    <div class="comment-action-menu">
+      <div class="comment-action-title" id="commentActionTitle">评论操作</div>
+      <button class="comment-action-btn" onclick="replySelectedComment()">回复</button>
+      <button class="comment-action-btn danger" onclick="deleteSelectedComment()">删除</button>
+      <button class="comment-action-btn cancel" onclick="closeCommentActionMenu()">取消</button>
+    </div>
+  </div>
+  <div class="page-content">
+    <div class="moments-list" id="momentsList">
+      <div class="moments-empty">📱 还没有朋友圈动态<br>发布一条试试吧！</div>
+    </div>
+  </div>
+</div>
+<script src="/static/theme.js?v=theme-20260606"></script>
+<script src="/static/common.js"></script>
+<script src="/static/vendor/markdown-it-15.0.1.min.js?v=15.0.1"></script>
+<script src="/static/chatroom-markdown.js?v=chinese-strong-20260906"></script>
+<script>
+const PAGE_SIZE = 50;
+const MOMENTS_SNAPSHOT_KEY = 'moments_page_snapshot_v2';
+let currentPage = 1;
+let totalItems = 0;
+let allMoments = [];
+let momentsNextCursor = null;
+let momentsHasMore = false;
+let momentsLoading = false;
+let momentsRefreshPending = false;
+let nameMap = {};  // author → display name
+let pendingMomentAttachments = [];
+
+// ── 初始化 ──
+async function init() {
+  restoreMomentsSnapshot();
+  const momentsPromise = loadMoments(1, false);
+  // 名字、已读状态和朋友圈首屏互不依赖，弱网下并行完成。
+  try {
+    const [wb, crCfg] = await Promise.all([
+      api('GET', '/api/worldbook'),
+      api('GET', '/api/chatroom/config'),
+    ]);
+    nameMap = {
+      user: wb.user_name || '用户',
+      aion: wb.ai_name || 'AI',
+      connor: crCfg.connor_name || 'Connor',
+    };
+  } catch(e) {
+    nameMap = { user: '用户', aion: 'AI', connor: 'Connor' };
+  }
+  renderList();
+
+  // 标记已读
+  api('POST', '/api/moments/mark-read').catch(() => {});
+  await momentsPromise;
+}
+
+// ── 加载朋友圈 ──
+async function loadMoments(page = 1, append = false) {
+  if (momentsLoading) {
+    if (!append) momentsRefreshPending = true;
+    return;
+  }
+  momentsLoading = true;
+  try {
+    const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
+    if (append && momentsNextCursor) params.set('before', String(momentsNextCursor));
+    const res = await api('GET', `/api/moments?${params}`);
+    totalItems = res.total;
+    if (append) {
+      for (const item of res.items || []) {
+        if (!allMoments.some(existing => existing.id === item.id)) allMoments.push(item);
+      }
+    } else {
+      allMoments = res.items;
+    }
+    momentsNextCursor = res.next_cursor || null;
+    momentsHasMore = !!res.has_more;
+    currentPage = page;
+    renderList();
+    if (!append) saveMomentsSnapshot();
+  } catch(e) {
+    console.error('加载朋友圈失败:', e);
+  } finally {
+    momentsLoading = false;
+    if (momentsRefreshPending) {
+      momentsRefreshPending = false;
+      void loadMoments(1, false);
+    }
+  }
+}
+
+function momentsSnapshotBridge() {
+  try { return window.top?.AppSharedData || window.AppSharedData || null; }
+  catch(e) { return window.AppSharedData || null; }
+}
+
+function saveMomentsSnapshot() {
+  try {
+    const payload = JSON.stringify({
+      schema: 2,
+      savedAt: Date.now(),
+      items: allMoments.slice(0, PAGE_SIZE),
+      total: totalItems,
+      nextCursor: momentsNextCursor,
+      hasMore: momentsHasMore,
+    });
+    localStorage.setItem(MOMENTS_SNAPSHOT_KEY, payload);
+    if (payload.length < 900000) momentsSnapshotBridge()?.put?.(MOMENTS_SNAPSHOT_KEY, payload);
+  } catch(e) {}
+}
+
+function restoreMomentsSnapshot() {
+  try {
+    const raw = momentsSnapshotBridge()?.get?.(MOMENTS_SNAPSHOT_KEY)
+      || localStorage.getItem(MOMENTS_SNAPSHOT_KEY) || '';
+    const snapshot = JSON.parse(raw || 'null');
+    if (!snapshot || snapshot.schema !== 2 || !Array.isArray(snapshot.items)) return false;
+    allMoments = snapshot.items;
+    totalItems = Number(snapshot.total || snapshot.items.length);
+    momentsNextCursor = snapshot.nextCursor || null;
+    momentsHasMore = !!snapshot.hasMore;
+    renderList();
+    return true;
+  } catch(e) { return false; }
+}
+
+function getAuthorName(author) {
+  return nameMap[author] || author;
+}
+
+function getAvatarUrl(author) {
+  if (author === 'user') return '/public/UserIcon.png';
+  if (author === 'aion') return '/public/AIIcon.png';
+  return '/public/codexicon.png';
+}
+
+function relativeTime(ts) {
+  const diff = Date.now() / 1000 - ts;
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return `${Math.floor(diff/60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}小时前`;
+  if (diff < 86400*7) return `${Math.floor(diff/86400)}天前`;
+  const d = new Date(ts * 1000);
+  return `${d.getMonth()+1}月${d.getDate()}日`;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function renderMarkdownBody(value) {
+  return window.ChatroomMarkdown?.render
+    ? window.ChatroomMarkdown.render(String(value || ''))
+    : escapeHtml(value || '');
+}
+
+// ── 渲染列表 ──
+function normalizeAttachments(atts) {
+  if (!Array.isArray(atts)) return [];
+  return atts.map(a => {
+    if (typeof a === 'string') return a;
+    if (a && typeof a === 'object') return a.url || '';
+    return '';
+  }).filter(url => url && (url.startsWith('/uploads/') || url.startsWith('/cr-uploads/')));
+}
+
+function renderMomentImages(atts) {
+  const urls = normalizeAttachments(atts);
+  if (!urls.length) return '';
+  const cls = urls.length === 1 ? 'moment-images one' : 'moment-images';
+  return `<div class="${cls}">` + urls.map(url =>
+    `<img src="${escapeHtml(url)}" alt="配图" loading="lazy" onclick="openMomentImage('${escapeHtml(url)}')">`
+  ).join('') + '</div>';
+}
+
+function openMomentImage(url) {
+  window.open(url, '_blank');
+}
+
+function renderPublishPreview() {
+  const preview = document.getElementById('publishPreview');
+  const status = document.getElementById('publishImageStatus');
+  if (!pendingMomentAttachments.length) {
+    preview.innerHTML = '';
+    status.textContent = '';
+    return;
+  }
+  status.textContent = `${pendingMomentAttachments.length} 张`;
+  preview.innerHTML = pendingMomentAttachments.map((url, idx) => `
+    <div class="publish-preview-item">
+      <img src="${escapeHtml(url)}" alt="配图">
+      <button class="publish-preview-remove" onclick="removePublishAttachment(${idx})" type="button">×</button>
+    </div>
+  `).join('');
+}
+
+function removePublishAttachment(idx) {
+  pendingMomentAttachments.splice(idx, 1);
+  renderPublishPreview();
+}
+
+async function handlePublishImages(input) {
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  const status = document.getElementById('publishImageStatus');
+  status.textContent = '上传中...';
+  try {
+    for (const file of files) {
+      if (!file.type || !file.type.startsWith('image/')) continue;
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data && data.url) pendingMomentAttachments.push(data.url);
+    }
+    renderPublishPreview();
+  } catch(e) {
+    status.textContent = '';
+    showToast('图片上传失败');
+  }
+}
+
+function renderList() {
+  const container = document.getElementById('momentsList');
+  if (!allMoments.length) {
+    container.innerHTML = '<div class="moments-empty">📱 还没有朋友圈动态<br>发布一条试试吧！</div>';
+    return;
+  }
+  let html = '';
+  for (const m of allMoments) {
+    html += renderMomentCard(m);
+  }
+  html += `<div class="moments-stats">共 ${totalItems} 条动态</div>`;
+  if (momentsHasMore) {
+    html += `<button class="load-more-btn" onclick="loadMoments(${currentPage+1}, true)">加载更多</button>`;
+  }
+  container.innerHTML = html;
+}
+
+function renderMomentCard(m) {
+  const authorName = getAuthorName(m.author);
+  const avatarUrl = getAvatarUrl(m.author);
+  const timeStr = relativeTime(m.created_at);
+  const comments = m.comments || [];
+  const reactions = m.reactions || [];
+  const imagesHtml = renderMomentImages(m.attachments);
+
+  // 反应统计
+  const likes = reactions.filter(r => r.type === 'like');
+  const dislikes = reactions.filter(r => r.type === 'dislike');
+  const myLike = reactions.find(r => r.author === 'user' && r.type === 'like');
+  const myDislike = reactions.find(r => r.author === 'user' && r.type === 'dislike');
+
+  let reactionsHtml = '';
+  if (likes.length || dislikes.length) {
+    reactionsHtml = '<div class="reaction-names">';
+    if (likes.length) {
+      reactionsHtml += `<span>👍 ${likes.map(r => getAuthorName(r.author)).join('、')}</span>`;
+    }
+    if (dislikes.length) {
+      reactionsHtml += `<span>👎 ${dislikes.map(r => getAuthorName(r.author)).join('、')}</span>`;
+    }
+    reactionsHtml += '</div>';
+  }
+
+  // 评论
+  let commentsHtml = '';
+  if (comments.length) {
+    commentsHtml = '<div class="comments-section">';
+    for (const c of comments) {
+      const cName = getAuthorName(c.author);
+      let replyTag = '';
+      if (c.reply_to_id) {
+        const parent = comments.find(x => x.id === c.reply_to_id);
+        if (parent) {
+          replyTag = ` <span class="comment-reply-tag">回复</span> <span class="comment-author">${escapeHtml(getAuthorName(parent.author))}</span>`;
+        }
+      }
+      commentsHtml += `<div class="comment-item"
+        onpointerdown="startCommentPress(event, '${m.id}', '${c.id}')"
+        onpointerup="cancelCommentPress()"
+        onpointercancel="cancelCommentPress()"
+        onpointerleave="cancelCommentPress()"
+        oncontextmenu="openCommentActionMenu('${m.id}', '${c.id}'); return false;">
+        <div class="comment-text"><span class="comment-author">${escapeHtml(cName)}</span>${replyTag}：${escapeHtml(c.content)}</div>
+      </div>`;
+    }
+    commentsHtml += '</div>';
+  }
+
+  return `<div class="moment-card" id="m_${m.id}">
+    <button class="moment-del" onclick="deleteMoment('${m.id}')" title="删除">✕</button>
+    <div class="moment-header">
+      <img class="moment-avatar" src="${avatarUrl}" alt="${escapeHtml(authorName)}" onerror="this.src='/public/AIIcon.png'">
+      <div class="moment-meta">
+        <div class="moment-author">${escapeHtml(authorName)}</div>
+        <div class="moment-time">${timeStr}</div>
+      </div>
+      <div class="moment-actions">
+        <button class="moment-action ${myLike ? 'active-like' : ''}" onclick="toggleReact('${m.id}','like')">👍 ${likes.length || ''}</button>
+        <button class="moment-action ${myDislike ? 'active-dislike' : ''}" onclick="toggleReact('${m.id}','dislike')">👎 ${dislikes.length || ''}</button>
+        <button class="moment-action" onclick="openCommentModal('${m.id}')">💬 ${comments.length || ''}</button>
+      </div>
+    </div>
+    <div class="moment-content markdown-body social-markdown">${renderMarkdownBody(m.content)}</div>
+    ${imagesHtml}
+    ${reactionsHtml}
+    ${commentsHtml}
+  </div>`;
+}
+
+function prependMomentOnce(moment) {
+  if (!moment?.id) return false;
+  const existingIndex = allMoments.findIndex(m => m.id === moment.id);
+  if (existingIndex >= 0) {
+    const existing = allMoments[existingIndex];
+    allMoments[existingIndex] = {
+      ...existing,
+      ...moment,
+      comments: moment.comments?.length ? moment.comments : (existing.comments || []),
+      reactions: moment.reactions?.length ? moment.reactions : (existing.reactions || []),
+    };
+    return false;
+  }
+  allMoments.unshift(moment);
+  allMoments.sort((a, b) => b.created_at - a.created_at);
+  totalItems++;
+  return true;
+}
+
+// ── 发布弹窗控制 ──
+function openPublishModal() {
+  document.getElementById('publishOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('publishInput').focus(), 100);
+}
+function closePublishModal() {
+  document.getElementById('publishOverlay').classList.remove('show');
+  document.getElementById('publishInput').value = '';
+  pendingMomentAttachments = [];
+  renderPublishPreview();
+}
+
+// ── 发布朋友圈 ──
+async function publishMoment() {
+  const input = document.getElementById('publishInput');
+  const content = input.value.trim();
+  if (!content && !pendingMomentAttachments.length) return;
+  const btn = document.getElementById('publishBtn');
+  btn.disabled = true;
+  try {
+    const attachments = pendingMomentAttachments.slice();
+    const m = await api('POST', '/api/moments', { content, attachments });
+    prependMomentOnce(m);
+    renderList();
+    saveMomentsSnapshot();
+    closePublishModal();
+  } catch(e) {
+    showToast('发布失败');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── 删除 ──
+async function deleteMoment(id) {
+  if (!confirm('确定删除这条朋友圈吗？')) return;
+  try {
+    await api('DELETE', `/api/moments/${id}`);
+    allMoments = allMoments.filter(m => m.id !== id);
+    totalItems--;
+    renderList();
+    saveMomentsSnapshot();
+  } catch(e) { showToast('删除失败'); }
+}
+
+// ── 点赞/踩 ──
+async function toggleReact(momentId, type) {
+  try {
+    const result = await api('POST', `/api/moments/${momentId}/react`, { author: 'user', type });
+    if (result?.error) throw new Error(result.error);
+    applyUserReaction(momentId, type, result || {});
+  } catch(e) { showToast('操作失败'); }
+}
+
+// ── 评论弹窗 ──
+let _commentMomentId = null;
+let _commentReplyToId = null;
+let _commentActionMomentId = null;
+let _commentActionCommentId = null;
+let _commentPressTimer = null;
+
+function findComment(momentId, commentId) {
+  const moment = allMoments.find(m => m.id === momentId);
+  return moment && (moment.comments || []).find(c => c.id === commentId);
+}
+
+function upsertMomentComment(comment) {
+  const idx = allMoments.findIndex(m => m.id === comment.moment_id);
+  if (idx < 0) return false;
+  if (!allMoments[idx].comments) allMoments[idx].comments = [];
+  const comments = allMoments[idx].comments;
+  const existingIdx = comments.findIndex(c => c.id === comment.id);
+  if (existingIdx >= 0) {
+    comments[existingIdx] = comment;
+  } else {
+    comments.push(comment);
+  }
+  renderList();
+  return true;
+}
+
+function applyUserReaction(momentId, type, result) {
+  const idx = allMoments.findIndex(m => m.id === momentId);
+  if (idx < 0) return false;
+  if (!allMoments[idx].reactions) allMoments[idx].reactions = [];
+  allMoments[idx].reactions = allMoments[idx].reactions.filter(r => r.author !== 'user');
+  if (result.action !== 'removed') {
+    allMoments[idx].reactions.push({
+      id: result.id || `mr_local_${Date.now()}`,
+      moment_id: momentId,
+      author: 'user',
+      type,
+      created_at: Date.now() / 1000,
+    });
+  }
+  renderList();
+  return true;
+}
+
+function startCommentPress(event, momentId, commentId) {
+  if (event.button && event.button !== 0) return;
+  cancelCommentPress();
+  _commentPressTimer = setTimeout(() => {
+    _commentPressTimer = null;
+    openCommentActionMenu(momentId, commentId);
+  }, 520);
+}
+
+function cancelCommentPress() {
+  if (_commentPressTimer) {
+    clearTimeout(_commentPressTimer);
+    _commentPressTimer = null;
+  }
+}
+
+function openCommentActionMenu(momentId, commentId) {
+  cancelCommentPress();
+  _commentActionMomentId = momentId;
+  _commentActionCommentId = commentId;
+  const c = findComment(momentId, commentId);
+  const title = document.getElementById('commentActionTitle');
+  title.textContent = c ? `${getAuthorName(c.author)}：${c.content}` : '评论操作';
+  document.getElementById('commentActionOverlay').classList.add('show');
+}
+
+function closeCommentActionMenu() {
+  document.getElementById('commentActionOverlay').classList.remove('show');
+  _commentActionMomentId = null;
+  _commentActionCommentId = null;
+}
+
+function replySelectedComment() {
+  const momentId = _commentActionMomentId;
+  const commentId = _commentActionCommentId;
+  closeCommentActionMenu();
+  if (momentId && commentId) openCommentModal(momentId, commentId);
+}
+
+async function deleteSelectedComment() {
+  const momentId = _commentActionMomentId;
+  const commentId = _commentActionCommentId;
+  if (!momentId || !commentId) return;
+  if (!confirm('删除这条评论吗？')) return;
+  try {
+    await api('DELETE', `/api/moments/${momentId}/comments/${commentId}`);
+    const idx = allMoments.findIndex(m => m.id === momentId);
+    if (idx >= 0 && allMoments[idx].comments) {
+      allMoments[idx].comments = allMoments[idx].comments
+        .filter(c => c.id !== commentId)
+        .map(c => c.reply_to_id === commentId ? { ...c, reply_to_id: null } : c);
+      renderList();
+    }
+    closeCommentActionMenu();
+  } catch(e) {
+    showToast('删除评论失败');
+  }
+}
+
+function openCommentModal(momentId, replyToId = null) {
+  _commentMomentId = momentId;
+  _commentReplyToId = replyToId;
+  document.getElementById('commentOverlay').classList.add('show');
+  const input = document.getElementById('commentModalInput');
+  const title = document.getElementById('commentModalTitle');
+  input.value = '';
+  title.textContent = '写评论';
+  input.placeholder = '写下你的评论...';
+  if (replyToId) {
+    const target = findComment(momentId, replyToId);
+    if (target) {
+      const name = getAuthorName(target.author);
+      title.textContent = `回复 ${name}`;
+      input.placeholder = `回复 ${name}...`;
+    }
+  }
+  setTimeout(() => input.focus(), 100);
+}
+function closeCommentModal() {
+  document.getElementById('commentOverlay').classList.remove('show');
+  _commentMomentId = null;
+  _commentReplyToId = null;
+}
+
+async function submitComment() {
+  const input = document.getElementById('commentModalInput');
+  const content = input.value.trim();
+  if (!content || !_commentMomentId) return;
+  const momentId = _commentMomentId;
+  const payload = { content };
+  if (_commentReplyToId) payload.reply_to_id = _commentReplyToId;
+  const btn = document.getElementById('commentModalBtn');
+  btn.disabled = true;
+  try {
+    const comment = await api('POST', `/api/moments/${momentId}/comments`, payload);
+    if (!comment?.id || comment.error) throw new Error(comment?.error || '评论失败');
+    if (!upsertMomentComment(comment)) loadMoments(currentPage);
+    closeCommentModal();
+  } catch(e) { showToast('评论失败'); }
+  finally { btn.disabled = false; }
+}
+
+// ── 自动扩展输入框 ──
+document.getElementById('publishInput').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+});
+
+// ── WebSocket 实时推送 ──
+function handleMomentWsMessage(msg) {
+  if (msg.type === 'moment_new' && msg.data) {
+    // POST 返回和 WebSocket 广播可能先后到达；按 id 保证只插入一次。
+    prependMomentOnce(msg.data);
+    renderList();
+  } else if (msg.type === 'moment_updated' && msg.data) {
+    prependMomentOnce(msg.data);
+    renderList();
+  } else if (msg.type === 'moment_deleted' && msg.data) {
+    const before = allMoments.length;
+    allMoments = allMoments.filter(m => m.id !== msg.data.id);
+    if (allMoments.length !== before) totalItems = Math.max(0, totalItems - 1);
+    renderList();
+  } else if (msg.type === 'moment_comment' && msg.data) {
+    upsertMomentComment(msg.data);
+  } else if (msg.type === 'moment_reaction' && msg.data) {
+    const idx = allMoments.findIndex(m => m.id === msg.data.moment_id);
+    if (idx >= 0) {
+      if (!allMoments[idx].reactions) allMoments[idx].reactions = [];
+      // 移除旧的同 author 反应
+      allMoments[idx].reactions = allMoments[idx].reactions.filter(r => r.author !== msg.data.author);
+      allMoments[idx].reactions.push(msg.data);
+      renderList();
+    }
+  } else if (msg.type === 'moment_reaction_removed' && msg.data) {
+    const idx = allMoments.findIndex(m => m.id === msg.data.moment_id);
+    if (idx >= 0 && allMoments[idx].reactions) {
+      allMoments[idx].reactions = allMoments[idx].reactions.filter(r => r.author !== msg.data.author);
+      renderList();
+    }
+  } else if (msg.type === 'moment_comment_deleted' && msg.data) {
+    const idx = allMoments.findIndex(m => m.id === msg.data.moment_id);
+    if (idx >= 0 && allMoments[idx].comments) {
+      const deletedId = msg.data.comment_id;
+      allMoments[idx].comments = allMoments[idx].comments
+        .filter(c => c.id !== deletedId)
+        .map(c => c.reply_to_id === deletedId ? { ...c, reply_to_id: null } : c);
+      renderList();
+    }
+  } else if (msg.type === 'sync_reset_required') {
+    loadMoments(1, false);
+    return;
+  } else {
+    return;
+  }
+  // 列表请求期间收到新变动，再取一次，避免较早的响应覆盖实时更新。
+  if (momentsLoading) momentsRefreshPending = true;
+  saveMomentsSnapshot();
+}
+// 重连/回到前台直接读取当前列表，避免历史事件回放覆盖最新内容。
+if (typeof connectCommonWS === 'function') connectCommonWS(handleMomentWsMessage, {
+  reconcile: () => loadMoments(1, false),
+});
+
+document.getElementById('momentsList').addEventListener('scroll', function() {
+  if (momentsHasMore && !momentsLoading && this.scrollTop + this.clientHeight >= this.scrollHeight - 160) {
+    loadMoments(currentPage + 1, true);
+  }
+});
+
+init();
+</script>
+</body>
+</html>
