@@ -47,6 +47,112 @@ uvicorn app.main:app --host 127.0.0.1 --port 8080
 
 ---
 
+## 部署到 VPS
+
+仓库：https://github.com/otaku2244/Harlan
+
+```bash
+# 1. 拉代码（建议放在纯 ASCII 路径下，省掉一整类编码问题）
+git clone https://github.com/otaku2244/Harlan.git ~/harlan
+cd ~/harlan
+
+# 2. 依赖
+python3 -m venv .venv
+. .venv/bin/activate
+pip install httpx fastapi uvicorn
+
+# 3. 配置
+cp .env.example .env
+$EDITOR .env      # 填 SEREIN_BASE_URL / SEREIN_GATEWAY_KEY / 模型三项
+
+# 4. ★ 第一步永远是验证真链路，不是起服务
+python spike.py "今天有点累"
+```
+
+`spike.py` 的五步全过，才说明 Serein 真的通了。**别跳过这一步直接起服务**——
+它能在几分钟内告诉你"地址错 / Key 错 / 索引没建"，而起了服务再排查要慢得多。
+
+四套离线测试也可以在 VPS 上跑一遍，确认 Python 版本与依赖没问题：
+
+```bash
+python spike.py --self-test
+python tests/test_spike_offline.py
+python tests/test_core.py
+python tests/test_http.py
+```
+
+### 跑服务
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
+⚠️ **监听地址按网络方案定**（v0.3 §1 已定：仅 Tailscale / 内网）：
+
+| 场景 | `--host` |
+|---|---|
+| 只走 Tailscale | VPS 的 Tailscale 地址（`100.x.x.x`） |
+| 本机调试 | `127.0.0.1` |
+| ⛔ 不要 | `0.0.0.0`（会把无鉴权的接口暴露到公网） |
+
+### 常驻（systemd）
+
+```ini
+# /etc/systemd/system/harlan.service
+[Unit]
+Description=Harlan backend
+After=network-online.target
+
+[Service]
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/harlan
+EnvironmentFile=/home/YOUR_USER/harlan/.env
+ExecStart=/home/YOUR_USER/harlan/.venv/bin/uvicorn app.main:app \
+  --host 100.x.x.x --port 8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now harlan
+journalctl -u harlan -f
+```
+
+---
+
+## 本机开发
+
+### 推送改动
+
+本机已配好 git（`C:\Program Files\Git`）、SSH/HTTPS 凭据存在 Windows 凭据管理器里，
+推送不会再要求登录：
+
+```powershell
+$env:Path = "C:\Program Files\Git\cmd;" + $env:Path   # 仅当 PATH 未刷新时
+git add -A
+git commit -m "说明这次改了什么"
+git push
+```
+
+> 仓库的 `core.autocrlf=input`：**提交时把 CRLF 转成 LF**。
+> 这是为 VPS（Linux）准备的，别改成 `true`，否则脚本会带上 `\r` 而在 Linux 上执行失败。
+
+### 备用推送方式（没有 git 时）
+
+`scripts/push_to_github.py` 走 GitHub API 建 commit，不需要 git：
+
+```powershell
+$env:GITHUB_TOKEN = "github_pat_..."    # fine-grained，Contents: Read and write
+py scripts/push_to_github.py --dry-run  # 先看清单
+py scripts/push_to_github.py
+```
+
+---
+
 ## 测试（全部不需要网络）
 
 ```bash
