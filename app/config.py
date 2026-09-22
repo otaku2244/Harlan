@@ -75,6 +75,19 @@ class Settings:
         self.host = os.environ.get("AION_HOST", "127.0.0.1")
         self.port = _int("AION_PORT", 8080)
 
+        # ── 唤醒调度（P3）────────────────────────────
+        # 轮询间隔。30 秒与 AionsHome 的 ScheduleManager 一致。
+        self.scheduler_poll_seconds = _int("SCHEDULER_POLL_SECONDS", 30)
+        # 空闲自主的随机间隔区间（分钟）。原项目默认 120，且最小 clamp 到 5。
+        self.idle_min_minutes = _int("IDLE_MIN_MINUTES", 120)
+        self.idle_max_minutes = _int("IDLE_MAX_MINUTES", 120)
+        # 主动开口落在哪个会话里（前端据此显示）
+        self.wake_conv_id = os.environ.get("WAKE_CONV_ID", "harlan")
+        # 记忆窗口前缀：每个角色一个稳定窗口，避免冷却串台
+        self.wake_window_prefix = os.environ.get("WAKE_WINDOW_PREFIX", "wake")
+        # 是否启用后台调度（测试里关掉，避免后台任务干扰）
+        self.scheduler_enabled = _bool("SCHEDULER_ENABLED", True)
+
         # ── 角色默认（首次建库时写入 actors 表）─────
         self.default_ai_name = os.environ.get("AI_DISPLAY_NAME", "Harlan")
         self.default_user_name = os.environ.get("USER_DISPLAY_NAME", "你")

@@ -31,6 +31,7 @@ from app.config import BASE_DIR, load_env_file, settings
 from app.core.directives import build_default_registry
 from app.core.ids import new_id, now_ts
 from app.core.pipeline import ChatPipeline, turn_index
+from app.core.scheduler import WakeScheduler
 from app.db import Database
 from app.ws import manager
 
@@ -51,6 +52,7 @@ class AppState:
         self.memory: SereinMemory | None = None
         self.model: ModelClient | None = None
         self.pipeline: ChatPipeline | None = None
+        self.scheduler: WakeScheduler | None = None
 
     @property
     def ready(self) -> bool:
@@ -74,15 +76,27 @@ async def lifespan(app: FastAPI):
     memory = SereinMemory(db, settings)
     await memory.start()
     model = ModelClient(settings)
-    pipeline = ChatPipeline(db, memory, model, build_default_registry(), settings)
+    registry = build_default_registry()
+    pipeline = ChatPipeline(db, memory, model, registry, settings)
+    scheduler = WakeScheduler(db, memory, model, registry, manager, settings)
+    # 两者共享同一个 model 实例；但运行中替换模型时必须两边一起改，
+    # 所以这里提供一个单一入口，避免以后漏改一处。
+    state.model = model
+    pipeline.model = scheduler.model = model
 
-    state.db, state.memory, state.model, state.pipeline = db, memory, model, pipeline
+    state.db, state.memory, state.model = db, memory, model
+    state.pipeline, state.scheduler = pipeline, scheduler
+
+    if settings.scheduler_enabled:
+        scheduler.start()
     try:
         yield
     finally:
+        await scheduler.stop()
         await memory.close()
         await db.close()
-        state.db = state.memory = state.model = state.pipeline = None
+        state.db = state.memory = state.model = None
+        state.pipeline = state.scheduler = None
 
 
 app = FastAPI(title="Aion / Harlan", version="0.1.0", lifespan=lifespan)
@@ -256,6 +270,65 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# 唤醒（P3）
+# ─────────────────────────────────────────────────────────────
+
+class WakeRequest(BaseModel):
+    actor: str = ""                    # 留空则用第一个启用的 AI 角色
+    kind: str = "proactive"            # proactive | idle | alarm | reminder
+    content: str = ""                  # alarm / reminder 的内容
+
+
+@app.get("/api/wakes")
+async def list_wakes(limit: int = Query(30, ge=1, le=200)) -> dict:
+    """查看唤醒总线现状：待触发 + 最近已触发。"""
+    if not state.db:
+        raise HTTPException(503, "服务未就绪")
+    pending = await state.db.query(
+        "SELECT id, type, origin, trigger_at, payload_json FROM schedules "
+        "WHERE status = 'active' ORDER BY trigger_at LIMIT ?",
+        (limit,),
+    )
+    recent = await state.db.query(
+        "SELECT id, type, origin, trigger_at, status FROM schedules "
+        "WHERE status != 'active' ORDER BY trigger_at DESC LIMIT ?",
+        (limit,),
+    )
+    now = now_ts()
+    for row in pending:
+        row["in_seconds"] = round(row["trigger_at"] - now, 1)
+    return {"pending": pending, "recent": recent, "scheduler_running":
+            bool(state.scheduler and state.scheduler.running)}
+
+
+@app.post("/api/wake")
+async def trigger_wake(body: WakeRequest) -> dict:
+    """手动让角色醒一次。
+
+    不用等真实的 2 小时，也不用改数据库 —— 可以立刻看到它主动开口。
+    走的是和后台循环完全相同的路径，所以结果有代表性。
+    """
+    if not state.scheduler or not state.db:
+        raise HTTPException(503, "服务未就绪")
+
+    slug = body.actor
+    if not slug:
+        row = await state.db.query_one(
+            "SELECT slug FROM actors WHERE kind='ai' AND enabled=1 ORDER BY id LIMIT 1"
+        )
+        if row is None:
+            raise HTTPException(400, "没有启用的 AI 角色")
+        slug = row["slug"]
+
+    if body.kind not in {"proactive", "idle", "alarm", "reminder"}:
+        raise HTTPException(400, f"未知的唤醒类型 {body.kind}")
+
+    payload = {"content": body.content} if body.content else {}
+    result = await state.scheduler.run_actor_now(slug, body.kind, payload)
+    return {"actor": slug, "kind": body.kind, **result}
 
 
 # ─────────────────────────────────────────────────────────────

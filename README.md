@@ -10,14 +10,15 @@
 
 ```
 [✅] P-1  spike.py 尖刺
-[✅] P0   后端骨架（数据库 / 上下文 / 指令 / 记忆 / 模型 / WS / HTTP）
+[✅] P1   Serein 真链路验证：召回 → 注入 → 登记 → 冷却（已实测）
+[✅] P3   唤醒调度：后台循环 / 原子领取 / 生成广播 / 重排下一次
+[  ] P3'  空闲自主的动作实现（memory_browse / web_roam 的具体执行）
 [  ] P0'  前端移植（待确认前端来源）
-[  ] P1   Serein Hook 客户端（已有适配器，待真链路验证）+ 归档通道
+[  ] P1'  新对话归档进 Serein（Operit 已在上游做，待确认是否复用）
 [  ] P2   Android 壳 + 哨兵
-[  ] P3   唤醒三件套
-[  ] P4   自建唤醒
-[  ] P5   能力指令
-[  ] P6   端侧硬件
+[  ] P4   自建唤醒（世界之窗 / 概率 / 兜底）
+[  ] P5   能力指令（CAM_CHECK / 音乐 / 搜索）
+[  ] P6   端侧硬件（玩具 / 摄像头）
 ```
 
 ---
@@ -38,12 +39,57 @@ uvicorn app.main:app --host 127.0.0.1 --port 8080
 | `GET /api/conversations/{id}/messages` | 消息分页 |
 | `POST /api/chat` | 发消息，返回 **SSE** 事件流 |
 | `PATCH /api/capabilities/{key}` | 开关能力（等于改提示词里列出什么） |
+| `GET /api/wakes` | 唤醒总线现状（待触发 + 最近触发） |
+| `POST /api/wake` | **手动让角色醒一次**（调试用，不用等 2 小时） |
 | `GET /ws` | WebSocket 多端同步 |
 
 `POST /api/chat` 的事件类型：`recall` `stream_start` `stream_delta`
 `capability` `capability_note` `stream_end` `delivery` `done` `error`。
 
 **同一条事件流也会广播到 WebSocket**，所以"单端重放"和"多端同步"是同一份数据。
+
+### 主动开口（P3）
+
+后台调度器每 30 秒轮询唤醒总线，到点就组装上下文、调模型、广播：
+
+```
+schedules 表：trigger_at（何时）+ origin（谁）
+      ↓ 轮询
+claim_due() 原子领取（并发下只有一个能拿到）
+      ↓
+组装（人设 + 记忆召回 + 本次感知 =「为什么现在开口」）
+      ↓
+流式生成 → 剥离指令 → 落库 → WS 广播
+      ↓
+排下一次（模型自决优先，否则随机间隔）
+```
+
+四类唤醒：`proactive`（模型上一轮用 `[NEXT_CHAT:x]` 自定）、`idle`（空闲自主）、
+`alarm`、`reminder`。
+
+**想立刻看到效果，不用等 2 小时**：
+
+```bash
+curl -X POST localhost:8080/api/wake -H 'Content-Type: application/json' \
+  -d '{"kind":"proactive"}'
+
+# 带内容的闹铃
+curl -X POST localhost:8080/api/wake -H 'Content-Type: application/json' \
+  -d '{"kind":"alarm","content":"该吃药了"}'
+```
+
+**冷却规则**（照 AionsHome）：用户一发消息，该角色的全部 `proactive` 计时器立即取消，
+避免"刚聊完又冒头"。
+
+**空闲自主的动作菜单**（模型自选，可逐个开关）：
+
+| key | 说明 | VPS 上 |
+|---|---|---|
+| `rest` | 什么都不做，继续休息 | ✅ 兜底 |
+| `private_chat` | 主动联系用户说点此刻想说的话 | ✅ 核心 |
+| `memory_browse` | 翻看一段旧记忆 | ✅ |
+| `web_roam` | 上网看看感兴趣的东西 | ✅ 需联网搜索能力 |
+| `home_dynamics` | 查看近期家庭动态 | ✅ |
 
 ---
 

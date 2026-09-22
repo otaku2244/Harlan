@@ -88,10 +88,14 @@ def main() -> int:
             test_health(client)
             test_bootstrap(client)
             fake = FakeModel()
-            main_mod.state.pipeline.model = fake          # 换成假模型
+            # 换模型要同时改 pipeline 与 scheduler —— 它们是两个独立引用。
+            # 生产代码里这层耦合已收进 AppState，测试这里显式同步。
+            main_mod.state.pipeline.model = fake
+            main_mod.state.scheduler.model = fake
             test_chat_plain(client, fake)
             test_chat_directive(client, fake, main_mod)
             test_capability_toggle(client)
+            test_wake_endpoints(client, main_mod)
             test_websocket(client, main_mod)
 
     print()
@@ -266,6 +270,51 @@ def test_capability_toggle(client) -> None:
     check("toy 可关闭", caps["toy"] is False)
     check("不存在的能力返回 404",
           client.patch("/api/capabilities/nope", json={"enabled": True}).status_code == 404)
+
+
+def test_wake_endpoints(client, main_mod) -> None:
+    print("\n[5b] 唤醒端点（P3）")
+
+    wakes = client.get("/api/wakes").json()
+    check("wakes 返回 pending/recent", "pending" in wakes and "recent" in wakes)
+    check("报告调度器状态", "scheduler_running" in wakes, str(wakes.get("scheduler_running")))
+
+    # 手动触发一次主动开口
+    main_mod.state.pipeline.model.push(["刚看到窗外下雨了，想起你说过喜欢雨。"])
+    resp = client.post("/api/wake", json={"actor": "harlan", "kind": "proactive"})
+    check("触发返回 200", resp.status_code == 200, resp.text[:150])
+    body = resp.json()
+    check("确实开口了", body.get("spoke") is True, str(body))
+    check("动作正确", body.get("action") == "private_chat", str(body))
+
+    # 消息应落在唤醒会话里
+    rows = client.get("/api/conversations/harlan/messages").json()["messages"]
+    check("主动消息已落库", len(rows) >= 1, f"实际 {len(rows)}")
+    if rows:
+        check("sender 是 harlan", rows[-1]["sender"] == "harlan")
+        check("meta 标注为主动", (rows[-1].get("meta") or {}).get("wake", {}).get("type") == "proactive",
+              str(rows[-1].get("meta")))
+
+    # rest 应当不产生消息
+    before = len(client.get("/api/conversations/harlan/messages").json()["messages"])
+    main_mod.state.pipeline.model.push(["[NEXT_CHAT:NONE]"])
+    resp = client.post("/api/wake", json={"actor": "harlan", "kind": "idle"})
+    after = len(client.get("/api/conversations/harlan/messages").json()["messages"])
+    check("rest 不产生消息", after == before, f"{before} → {after}")
+
+    # 闹铃带内容
+    main_mod.state.pipeline.model.push(["到点了，该吃药了。"])
+    resp = client.post("/api/wake",
+                       json={"actor": "harlan", "kind": "alarm", "content": "吃药"})
+    check("闹铃触发成功", resp.json().get("spoke") is True, resp.text[:150])
+
+    # 参数校验
+    check("未知类型返回 400",
+          client.post("/api/wake", json={"kind": "nope"}).status_code == 400)
+
+    # 手动触发后应排了下一次
+    wakes = client.get("/api/wakes").json()
+    check("已排下一次唤醒", len(wakes["pending"]) >= 1, str(wakes["pending"]))
 
 
 def test_websocket(client, main_mod) -> None:

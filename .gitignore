@@ -19,3 +19,6 @@ Thumbs.db
 data/
 *.db
 *.sqlite3
+
+# Serein 诊断落盘：含真实记忆内容，绝不入库
+.serein-debug/
