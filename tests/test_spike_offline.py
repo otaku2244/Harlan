@@ -54,6 +54,9 @@ def main() -> int:
     fake = load_module(ROOT / "docs" / "dev-fake-serein.py", "fake_serein")
     spike = load_module(ROOT / "spike.py", "spike_mod")
 
+    # 本测试自己设环境变量，别让本机 .env 干扰
+    os.environ["AION_SKIP_ENV"] = "1"
+
     # 环境变量要在 Config 实例化之前设好
     server = HTTPServer(("127.0.0.1", 0), fake.Handler)      # 0 = 让系统分配空闲端口
     port = server.server_address[1]

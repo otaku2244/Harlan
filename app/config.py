@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# BASE_DIR 与 .env 加载器住在 app/env.py（那个文件刻意不依赖任何 app 内部模块，
+# 因为 .env 必须在 app.config 被导入之前生效 —— 见 app/__init__.py 的说明）。
+from app.env import BASE_DIR
 
 
 def _int(name: str, default: int) -> int:
@@ -25,22 +27,6 @@ def _bool(name: str, default: bool) -> bool:
     if raw is None or raw == "":
         return default
     return raw.strip().lower() not in {"0", "false", "no", "off"}
-
-
-def load_env_file(path: Path | None = None) -> None:
-    """极简 .env 读取（不引入 python-dotenv）。已存在的环境变量优先。"""
-    target = path or (BASE_DIR / ".env")
-    if not target.exists():
-        return
-    for raw in target.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = value
 
 
 class Settings:
@@ -87,6 +73,9 @@ class Settings:
         self.wake_window_prefix = os.environ.get("WAKE_WINDOW_PREFIX", "wake")
         # 是否启用后台调度（测试里关掉，避免后台任务干扰）
         self.scheduler_enabled = _bool("SCHEDULER_ENABLED", True)
+        # 主动开口的输出上限。主动开口通常只有一两句话，
+        # 限长能省 token，也避免它长篇大论。
+        self.wake_max_tokens = _int("WAKE_MAX_TOKENS", 400)
 
         # ── 角色默认（首次建库时写入 actors 表）─────
         self.default_ai_name = os.environ.get("AI_DISPLAY_NAME", "Harlan")
@@ -110,3 +99,14 @@ class Settings:
 
 
 settings = Settings()
+
+# 诊断：AION_ENV_TRACE=1 时打印实例化时刻读到的值（不含密钥）
+if os.environ.get("AION_ENV_TRACE", "") not in {"", "0", "false"}:
+    import sys as _sys
+
+    print(
+        f"[app/config] 实例化 settings：SEREIN_BASE_URL="
+        f"{settings.serein_base_url or '(空)'!r} MODEL_NAME={settings.model_name or '(空)'!r}",
+        file=_sys.stderr,
+        flush=True,
+    )

@@ -46,7 +46,12 @@ STATE_PATH = HERE / ".spike-state.json"   # 按窗口记录最近交付的召回
 # ─────────────────────────────────────────────────────────────
 
 def load_env_file(path: Path) -> None:
-    """极简 .env 读取（不引入 python-dotenv）。已存在的环境变量优先。"""
+    """极简 .env 读取（不引入 python-dotenv）。已存在的环境变量优先。
+
+    AION_SKIP_ENV=1 时跳过 —— 测试要自己控制配置时用。
+    """
+    if os.environ.get("AION_SKIP_ENV", "") not in {"", "0", "false"}:
+        return
     if not path.exists():
         return
     for raw in path.read_text(encoding="utf-8").splitlines():

@@ -27,12 +27,13 @@ from pydantic import BaseModel, Field
 
 from app.adapters.model import ModelClient
 from app.adapters.serein import SereinMemory
-from app.config import BASE_DIR, load_env_file, settings
+from app.config import BASE_DIR, settings
 from app.core.directives import build_default_registry
 from app.core.ids import new_id, now_ts
 from app.core.pipeline import ChatPipeline, turn_index
 from app.core.scheduler import WakeScheduler
 from app.db import Database
+from app.env import load_env_file
 from app.ws import manager
 
 # 首次启动时注册的能力清单（enabled 决定它对模型是否可见 / 是否出现在提示词里）
@@ -64,6 +65,8 @@ state = AppState()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 注意：.env 已在 app/__init__.py 里加载（必须早于 app.config 实例化 settings）。
+    # 这里再调一次是无害的幂等兜底，别把它当成唯一入口。
     load_env_file()
 
     db = Database(settings.db_path)
@@ -116,6 +119,14 @@ async def healthz() -> dict:
         "serein_configured": settings.serein_enabled,
         "model_configured": settings.model_enabled,
         "ws_clients": manager.client_count,
+        # 诊断用：直接暴露读到的值（不含密钥），排查配置问题时很有用
+        "config_seen": {
+            "serein_base_url": settings.serein_base_url or "(空)",
+            "serein_key_len": len(settings.serein_gateway_key),
+            "model_base_url": settings.model_base_url or "(空)",
+            "model_name": settings.model_name or "(空)",
+            "ai_display_name": settings.default_ai_name,
+        },
     }
 
 

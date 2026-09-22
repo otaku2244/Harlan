@@ -44,6 +44,7 @@ class ModelClient:
         messages: list[dict],
         *,
         temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncIterator[str]:
         """流式产出文本增量。
 
@@ -53,9 +54,11 @@ class ModelClient:
         if not self.enabled:
             raise ModelError("模型未配置（MODEL_BASE_URL / MODEL_NAME）")
 
-        overrides = {}
+        overrides: dict = {}
         if temperature is not None:
             overrides["temperature"] = temperature
+        if max_tokens is not None:
+            overrides["max_tokens"] = max_tokens
 
         url = f"{self.settings.model_base_url}/chat/completions"
         headers = {

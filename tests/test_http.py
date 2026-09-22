@@ -74,11 +74,15 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         import os
+        # ★ 必须在导入 app 之前设好：
+        #   AION_SKIP_ENV=1 阻止 app/__init__.py 读取本机 .env，
+        #   否则下面刻意"清空配置"的降级路径会被 .env 里的真实值覆盖。
+        os.environ["AION_SKIP_ENV"] = "1"
         os.environ["AION_DB_PATH"] = str(Path(tmp) / "http.db")
         os.environ["AION_HOST"] = "127.0.0.1"
-        os.environ.pop("SEREIN_BASE_URL", None)     # 走"记忆未配置"的降级路径
-        os.environ.pop("SEREIN_GATEWAY_KEY", None)
-        os.environ.pop("MODEL_BASE_URL", None)
+        for key in ("SEREIN_BASE_URL", "SEREIN_GATEWAY_KEY", "MODEL_BASE_URL",
+                    "MODEL_NAME", "MODEL_API_KEY"):
+            os.environ.pop(key, None)
 
         from fastapi.testclient import TestClient
 

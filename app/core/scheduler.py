@@ -178,7 +178,8 @@ class WakeScheduler:
 
         text = ""
         try:
-            async for piece in self.model.stream(assembled.messages):
+            async for piece in self.model.stream(assembled.messages,
+                                                 max_tokens=self.settings.wake_max_tokens):
                 text += piece
                 await self._broadcast("wake_delta", {"actor": slug, "text": piece})
         except Exception as exc:  # noqa: BLE001
@@ -244,9 +245,14 @@ class WakeScheduler:
             }
         if kind == "proactive":
             minutes = payload.get("minutes")
+            # 手动触发（POST /api/wake）不带 minutes，别渲染成 "None 分钟"
+            if isinstance(minutes, int):
+                reason = f"你自己定的 {minutes} 分钟后回来说话"
+            else:
+                reason = "到点回来看看他"
             return {
                 "action": "private_chat",
-                "reason": f"你自己定的 {minutes} 分钟后回来说话",
+                "reason": reason,
                 "query": "",
                 "perception": (
                     "[到点事件]\n这是你自己上一轮决定的——过一会儿再找他。"
