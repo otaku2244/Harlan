@@ -1,0 +1,13 @@
+# Aion / Harlan 后端依赖
+#
+# 安装：py -m pip install -r requirements.txt
+#
+# 注意：不要从 AionsHome 抄它的 requirements.txt。
+# 那份里有 pywin32 / sounddevice / opencv-python —— Windows 原生依赖，
+# 而且它同时在 vendor/ 里放了一整套 win_amd64 wheel，那些在 Linux 上装不上。
+# 我们这份只留跨平台的。
+
+fastapi>=0.115
+uvicorn>=0.30
+httpx>=0.27
+pydantic>=2.7
